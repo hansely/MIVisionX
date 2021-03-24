@@ -20,23 +20,15 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required(VERSION 3.0)
 project(rali)
 
 list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/../../amd_openvx/cmake)
-find_package(Protobuf REQUIRED)	
-if (NOT ${Protobuf_FOUND})	
-    message( FATAL_ERROR "Could not find Protobuf!" )	
-endif() 	
-link_directories(	
-    ${PROTOBUF_LIBRARY_DIRS}	
-)	
-include_directories(	
-    ${PROTOBUF_INCLUDE_DIRS}	
-)
+		
 find_package(OpenCL QUIET)
 find_package(AMDRPP QUIET)
 find_package(TurboJpeg QUIET)
+find_package(Protobuf QUIET)
 # If FFMPEG is found, vx_amd_media is expected to be built as well
 find_package(FFmpeg QUIET)
 find_package(OpenCV QUIET)
@@ -56,6 +48,10 @@ endif()
 if(NOT TurboJpeg_FOUND)
 	set(BUILD_RALI false)
 	message("-- ${Yellow}rali library requires TurboJpeg, Not Found ${ColourReset}")
+endif()
+if(NOT Protobuf_FOUND)
+	set(BUILD_RALI false)
+	message("-- ${Yellow}rali library requires Protobuf, Not Found ${ColourReset}")
 endif()
 if(CMAKE_VERSION VERSION_LESS ${MIN_CMAKE_VER_REQUIRED})
 	set(BUILD_RALI false)
@@ -96,6 +92,7 @@ if(${BUILD_RALI})
 			    ${OpenCL_INCLUDE_DIRS}/Headers	
 				${CMAKE_CURRENT_BINARY_DIR}
 			    ${TurboJpeg_INCLUDE_DIRS}
+				${PROTOBUF_INCLUDE_DIRS}
 			    ${AMDRPP_INCLUDE_DIRS}
 			    ../../amd_openvx/openvx/include/
 			    ../../amd_openvx_extensions/amd_rpp/include/
@@ -103,19 +100,22 @@ if(${BUILD_RALI})
 			    include
 			    )
 	protobuf_generate_cpp(TF_PROTO_SRCS TF_PROTO_HEADERS proto/example.proto proto/feature.proto)
-
-	link_directories(${AMDRPP_LIBRARIES_DIR} ${TurboJpeg_LIBRARIES_DIR} /usr/local/lib/)
+	protobuf_generate_cpp(CAFFE2_PROTO_SRCS CAFFE2_PROTO_HEADERS proto/caffe2_protos.proto)
+    protobuf_generate_cpp(CAFFE_PROTO_SRCS CAFFE_PROTO_HEADERS proto/caffe_protos.proto)
+	link_directories(${AMDRPP_LIBRARIES_DIR} ${TurboJpeg_LIBRARIES_DIR} ${PROTOBUF_LIBRARY_DIRS} /usr/local/lib/)
 
 	file(GLOB SOURCES "./source/*.cpp")
-	add_library(${PROJECT_NAME} SHARED ${SOURCES} ${TF_PROTO_SRCS} ${TF_PROTO_HEADERS})
+	add_library(${PROJECT_NAME} SHARED ${SOURCES} ${TF_PROTO_SRCS} ${TF_PROTO_HEADERS} ${CAFFE_PROTO_HEADERS} ${CAFFE_PROTO_SRCS} ${CAFFE2_PROTO_SRCS} ${CAFFE2_PROTO_HEADERS})
 
 	target_compile_definitions(${PROJECT_NAME} PUBLIC ENABLE_SIMD=1)
 	target_compile_definitions(${PROJECT_NAME} PUBLIC DBG_TIMING=1)
-	target_compile_definitions(${PROJECT_NAME} PUBLIC DBGLOG=0)
+	target_compile_definitions(${PROJECT_NAME} PUBLIC DBGLOG=0 WRNLOG=0)
 	target_compile_definitions(${PROJECT_NAME} PUBLIC TFRECORD_ENABLE=0)
 	message("-- ${Green}${PROJECT_NAME} built with ENABLE_SIMD")
 	if (OpenCV_FOUND)
 		target_compile_definitions(${PROJECT_NAME} PUBLIC ENABLE_OPENCV=1)
+        include_directories(${OpenCV_INCLUDE_DIRS})
+        target_link_libraries(${PROJECT_NAME} ${OpenCV_LIBRARIES})
 	else()
 		target_compile_definitions(${PROJECT_NAME} PUBLIC ENABLE_OPENCV=0)
 	endif()
@@ -125,10 +125,10 @@ if(${BUILD_RALI})
 
 	if(NOT FFMPEG_FOUND)
 		message("-- ${Yellow}rali library is going to be built without video decode functionality ${ColourReset}")
-		target_link_libraries(${PROJECT_NAME} -fPIC ${PROTOBUF_LIBRARIES} turbojpeg openvx vx_rpp jsoncpp)
+		target_link_libraries(${PROJECT_NAME} -fPIC ${PROTOBUF_LIBRARIES} lmdb boost_system boost_filesystem turbojpeg openvx vx_rpp jsoncpp)
 	else()
 		message("-- ${Green}rali library is going to be built with video decode functionality ${ColourReset}")
-		target_link_libraries(${PROJECT_NAME} -DRALI_VIDEO -fPIC ${PROTOBUF_LIBRARIES} turbojpeg openvx vx_rpp vx_amd_media jsoncpp)
+		target_link_libraries(${PROJECT_NAME} -DRALI_VIDEO -fPIC ${PROTOBUF_LIBRARIES} lmdb turbojpeg openvx vx_rpp vx_amd_media jsoncpp)
 	endif()
 
 	install(TARGETS rali DESTINATION lib)

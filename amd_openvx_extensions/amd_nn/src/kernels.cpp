@@ -222,6 +222,7 @@ SHARED_PUBLIC vx_status VX_API_CALL vxPublishKernels(vx_context context)
     ERROR_CHECK_STATUS(publishPoolingLayer(context));
     ERROR_CHECK_STATUS(publishSoftmaxLayer(context));
     ERROR_CHECK_STATUS(publishNormalizationLayer(context));
+    ERROR_CHECK_STATUS(publishLocalResponseNormalizationLayer(context));
     ERROR_CHECK_STATUS(publishActivationLayer(context));
     ERROR_CHECK_STATUS(publishROIPoolingLayer(context));
     ERROR_CHECK_STATUS(publishDeconvolutionLayer(context));
@@ -252,6 +253,8 @@ SHARED_PUBLIC vx_status VX_API_CALL vxPublishKernels(vx_context context)
     ERROR_CHECK_STATUS(publishNMSLayer(context));
     ERROR_CHECK_STATUS(publishGatherLayer(context));
     ERROR_CHECK_STATUS(publishTopKLayer(context));
+    ERROR_CHECK_STATUS(publishReduceMinLayer(context));
+    ERROR_CHECK_STATUS(publishTileLayer(context));
 
     // register drama rules
     AgoNodeMergeRule softmax_rule = {

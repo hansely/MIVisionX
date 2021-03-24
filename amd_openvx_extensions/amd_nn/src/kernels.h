@@ -114,6 +114,8 @@ enum user_kernel_e
     VX_KERNEL_NMS_LAYER_AMD                  = VX_KERNEL_BASE(VX_ID_AMD, NN_EXTENSION_LIBRARY) + 0x015,
     VX_KERNEL_GATHER_LAYER_AMD               = VX_KERNEL_BASE(VX_ID_AMD, NN_EXTENSION_LIBRARY) + 0x016,
     VX_KERNEL_TOPK_LAYER_AMD                 = VX_KERNEL_BASE(VX_ID_AMD, NN_EXTENSION_LIBRARY) + 0x017,
+    VX_KERNEL_REDUCE_MIN_LAYER_AMD           = VX_KERNEL_BASE(VX_ID_AMD, NN_EXTENSION_LIBRARY) + 0x018,
+    VX_KERNEL_TILE_LAYER_AMD                 = VX_KERNEL_BASE(VX_ID_AMD, NN_EXTENSION_LIBRARY) + 0x019,
 };
 
 //////////////////////////////////////////////////////////////////////
@@ -141,6 +143,7 @@ vx_status publishFullyConnectedLayer(vx_context context);
 vx_status publishPoolingLayer(vx_context context);
 vx_status publishSoftmaxLayer(vx_context context);
 vx_status publishNormalizationLayer(vx_context context);
+vx_status publishLocalResponseNormalizationLayer(vx_context context);
 vx_status publishActivationLayer(vx_context context);
 vx_status publishROIPoolingLayer(vx_context context);
 vx_status publishDeconvolutionLayer(vx_context context);
@@ -171,6 +174,8 @@ vx_status publishDetectionOutputLayer(vx_context context);
 vx_status publishNMSLayer(vx_context context);
 vx_status publishGatherLayer(vx_context context);
 vx_status publishTopKLayer(vx_context context);
+vx_status publishReduceMinLayer(vx_context context);
+vx_status publishTileLayer(vx_context context);
 
 //////////////////////////////////////////////////////////////////////
 //! \brief The module entry point for publishing/unpublishing kernels

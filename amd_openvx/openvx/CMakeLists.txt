@@ -18,12 +18,16 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required(VERSION 3.0)
 project(openvx)
 
 set(CMAKE_CXX_STANDARD 11)
 
-find_package(OpenCL QUIET)
+if(OPENCL_SUPPORT)
+	find_package(OpenCL QUIET)
+else()
+	message("-- ${Cyan}OpenCL Modules turned OFF by user option -D OPENCL_SUPPORT=OFF ${ColourReset}")
+endif()
 
 include_directories(include ago api)
 
@@ -42,6 +46,7 @@ list(APPEND SOURCES
 	ago/ago_haf_cpu_fast_corners.cpp
 	ago/ago_haf_cpu_filter.cpp
 	ago/ago_haf_cpu_geometric.cpp
+	ago/ago_haf_cpu_generic_functions.cpp
 	ago/ago_haf_cpu_harris.cpp
 	ago/ago_haf_cpu_histogram.cpp
 	ago/ago_haf_cpu_logical.cpp
@@ -64,18 +69,24 @@ list(APPEND SOURCES
 )
 
 add_library(openvx SHARED ${SOURCES})
+add_library(vxu SHARED api/vxu.cpp)
+target_link_libraries(vxu openvx)
 
 if (OpenCL_FOUND)
 	target_compile_definitions(openvx PUBLIC ENABLE_OPENCL=1)
+	target_compile_definitions(vxu PUBLIC ENABLE_OPENCL=1)
 	include_directories(${OpenCL_INCLUDE_DIRS} ${OpenCL_INCLUDE_DIRS}/Headers)
 	target_link_libraries(openvx ${OpenCL_LIBRARIES})
 	message("-- ${Green}AMD OpenVX -- OpenVX built with OpenCL Support${ColourReset}")
+	message("-- ${Blue}Using OpenCL Library -- ${OpenCL_LIBRARIES}${ColourReset}")
 else(OpenCL_FOUND)
 	target_compile_definitions(openvx PUBLIC ENABLE_OPENCL=0)
-	message("-- ${Red}WARNING:OpenCL Not Found -- OpenVX built for CPU only${ColourReset}")
+	target_compile_definitions(vxu PUBLIC ENABLE_OPENCL=0)
+	message("-- ${Yellow}NOTE:OpenCL Not Found -- OpenVX built for CPU only${ColourReset}")
 endif(OpenCL_FOUND)
 
 install(TARGETS openvx DESTINATION lib)
+install(TARGETS vxu DESTINATION lib)
 install(FILES include/vx_ext_amd.h DESTINATION include)
 install (FILES
             include/VX/vx.h

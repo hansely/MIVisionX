@@ -18,6 +18,14 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
+from __future__ import print_function
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
+from future import standard_library
+standard_library.install_aliases()
+from builtins import *
+from builtins import str
 import os, sys, struct
 from nnir import *
 
@@ -73,7 +81,7 @@ graph nnir (%s) -> (%s) {
 """    
     %s = %s(%s, size=[1,1,%d,%d], stride=[%s], dilation=[%s], padding=[%s], border = 'ignore');
 """ % (node.outputs[0], node.type, node.inputs[0], kernel_shape[0], kernel_shape[1], \
-       stride, dilation, padding, node.outputs[0], node.outputs[0], kernel_shape[0], kernel_shape[1]))
+       stride, dilation, padding))
             elif node.type == 'relu' or node.type == 'softmax':
                 f.write( \
 """    %s = %s(%s);
