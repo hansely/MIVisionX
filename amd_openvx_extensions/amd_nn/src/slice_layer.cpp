@@ -1,7 +1,7 @@
-#include <vx_amd_nn.h>
 #include <kernels.h>
 
 static vx_status VX_CALLBACK validateSliceLayer(vx_node node, const vx_reference *parameters, vx_uint32 num, vx_meta_format metas[]) {
+    //get input params
     vx_enum type, starts_type, ends_type, axes_type, steps_type, out_type;
     vx_size num_dims, starts_dims, ends_dims, axes_dims, steps_dims, out_num_dims;
     vx_size input_dims[4], output_dims[4];
@@ -24,30 +24,30 @@ static vx_status VX_CALLBACK validateSliceLayer(vx_node node, const vx_reference
     ERROR_CHECK_STATUS(vxQueryTensor((vx_tensor)parameters[3], VX_TENSOR_DATA_TYPE, &ends_type, sizeof(ends_type)));
     if ((ends_type != VX_TYPE_INT32) && (ends_type != VX_TYPE_INT64)) return VX_ERROR_INVALID_TYPE;
     
-    if (parameters[4]) {
-        ERROR_CHECK_STATUS(vxQueryTensor((vx_tensor)parameters[4], VX_TENSOR_DIMS, &axes_dims, sizeof(axes_dims)));   
-        ERROR_CHECK_STATUS(vxQueryTensor((vx_tensor)parameters[4], VX_TENSOR_DATA_TYPE, &axes_type, sizeof(axes_type)));
-        if ((axes_type != VX_TYPE_INT32) && (axes_type != VX_TYPE_INT64)) return VX_ERROR_INVALID_TYPE;
-        if (starts_dims != axes_dims) {
-            printf("validate:slice: The dimension length of starts, ends, axes, and steps must be the same.\n");
-            return VX_ERROR_INVALID_DIMENSION;
-        }
-    }
+    // if (parameters[4]) {
+    //     ERROR_CHECK_STATUS(vxQueryTensor((vx_tensor)parameters[4], VX_TENSOR_DIMS, &axes_dims, sizeof(axes_dims)));   
+    //     ERROR_CHECK_STATUS(vxQueryTensor((vx_tensor)parameters[4], VX_TENSOR_DATA_TYPE, &axes_type, sizeof(axes_type)));
+    //     if ((axes_type != VX_TYPE_INT32) && (axes_type != VX_TYPE_INT64)) return VX_ERROR_INVALID_TYPE;
+    //     if (starts_dims != axes_dims) {
+    //         printf("validate:slice: The dimension length of starts, ends, axes, and steps must be the same.\n");
+    //         return VX_ERROR_INVALID_DIMENSION;
+    //     }
+    // }
     
-    if (parameters[5]) {
-        ERROR_CHECK_STATUS(vxQueryTensor((vx_tensor)parameters[5], VX_TENSOR_DIMS, &steps_dims, sizeof(steps_dims)));   
-        ERROR_CHECK_STATUS(vxQueryTensor((vx_tensor)parameters[5], VX_TENSOR_DATA_TYPE, &steps_type, sizeof(steps_type)));
-        if ((steps_type != VX_TYPE_INT32) && (steps_type != VX_TYPE_INT64)) return VX_ERROR_INVALID_TYPE;
-        if (starts_dims != steps_dims) {
-            printf("validate:slice: The dimension length of starts, ends, axes, and steps must be the same.\n");
-            return VX_ERROR_INVALID_DIMENSION;
-        }
-    }
+    // if (parameters[5]) {
+    //     ERROR_CHECK_STATUS(vxQueryTensor((vx_tensor)parameters[5], VX_TENSOR_DIMS, &steps_dims, sizeof(steps_dims)));   
+    //     ERROR_CHECK_STATUS(vxQueryTensor((vx_tensor)parameters[5], VX_TENSOR_DATA_TYPE, &steps_type, sizeof(steps_type)));
+    //     if ((steps_type != VX_TYPE_INT32) && (steps_type != VX_TYPE_INT64)) return VX_ERROR_INVALID_TYPE;
+    //     if (starts_dims != steps_dims) {
+    //         printf("validate:slice: The dimension length of starts, ends, axes, and steps must be the same.\n");
+    //         return VX_ERROR_INVALID_DIMENSION;
+    //     }
+    // }
     
     ERROR_CHECK_STATUS(vxSetMetaFormatAttribute(metas[1], VX_TENSOR_DATA_TYPE, &out_type, sizeof(out_type)));
     ERROR_CHECK_STATUS(vxSetMetaFormatAttribute(metas[1], VX_TENSOR_NUMBER_OF_DIMS, &out_num_dims, sizeof(num_dims)));
     ERROR_CHECK_STATUS(vxSetMetaFormatAttribute(metas[1], VX_TENSOR_DIMS, &output_dims, sizeof(output_dims)));
-    printf("validate done\n");
+    
     return VX_SUCCESS;
 
 }
@@ -60,6 +60,227 @@ static vx_status VX_CALLBACK query_target_support(vx_graph graph, vx_node node,
     supported_target_affinity = AGO_TARGET_AFFINITY_GPU;
     return VX_SUCCESS;
 }
+
+static vx_status VX_CALLBACK opencl_codegen(
+    vx_node node,                                  // [input] node
+    const vx_reference parameters[],               // [input] parameters
+    vx_uint32 num,                                 // [input] number of parameters
+    bool opencl_load_function,                     // [input]  false: normal OpenCL kernel; true: reserved
+    char opencl_kernel_function_name[64],          // [output] kernel_name for clCreateKernel()
+    std::string& opencl_kernel_code,               // [output] string for clCreateProgramWithSource()
+    std::string& opencl_build_options,             // [output] options for clBuildProgram()
+    vx_uint32& opencl_work_dim,                    // [output] work_dim for clEnqueueNDRangeKernel()
+    vx_size opencl_global_work[],                  // [output] global_work[] for clEnqueueNDRangeKernel()
+    vx_size opencl_local_work[],                   // [output] local_work[] for clEnqueueNDRangeKernel()
+    vx_uint32& opencl_local_buffer_usage_mask,     // [output] reserved: must be ZERO
+    vx_uint32& opencl_local_buffer_size_in_bytes   // [output] reserved: must be ZERO
+)
+{
+    //get input params
+    vx_size num_of_dims, num_of_dims2;
+    vx_enum type;
+    vx_uint32 axis;
+
+    ERROR_CHECK_STATUS(vxQueryTensor((vx_tensor)parameters[0], VX_TENSOR_NUMBER_OF_DIMS, &num_of_dims, sizeof(num_of_dims)));
+    vx_size input_dims[num_of_dims];
+    ERROR_CHECK_STATUS(vxQueryTensor((vx_tensor)parameters[0], VX_TENSOR_DIMS, input_dims, sizeof(input_dims)));    
+
+    ERROR_CHECK_STATUS(vxQueryTensor((vx_tensor)parameters[1], VX_TENSOR_NUMBER_OF_DIMS, &num_of_dims2, sizeof(num_of_dims)));
+    vx_size input_dims2[num_of_dims2];
+    ERROR_CHECK_STATUS(vxQueryTensor((vx_tensor)parameters[1], VX_TENSOR_DIMS, input_dims2, sizeof(input_dims2)));
+
+    ERROR_CHECK_STATUS(vxQueryTensor((vx_tensor)parameters[0], VX_TENSOR_DATA_TYPE, &type, sizeof(type)));
+    
+    strcpy(opencl_kernel_function_name, "slice_layer");
+
+
+    vx_status status;
+    vx_map_id map_id;
+    vx_size stride[4];
+    float * fptr;
+    int * ptr;
+
+    // copy input tensor
+    status = vxMapTensorPatch((vx_tensor)parameters[0], 2, nullptr, nullptr, &map_id, stride, (void **)&fptr, VX_READ_ONLY, VX_MEMORY_TYPE_HOST);
+    if(status) {
+        std::cerr << "ERROR: vxMapTensorPatch() failed for input tensor (" << status << ")" << std::endl;
+        return -1;
+    }
+    for(int i=0; i<8; i++) {
+        printf("the value[%d] : %f\n", i, (float)fptr[i]);
+    }
+    vxUnmapTensorPatch((vx_tensor)parameters[0], map_id);
+
+    // //reverse input dims w,h,c,n- > n,c,h,w
+    // int start = 0, end = num_of_dims-1;
+    // while (start < end) {
+    //     int temp = input_dims[start];
+    //     input_dims[start] = input_dims[end];
+    //     input_dims[end] = temp;
+    //     start++;
+    //     end--;
+    // }
+
+    opencl_work_dim = 3;
+    opencl_global_work[0] = 2;
+    opencl_global_work[1] = 1;
+    opencl_global_work[2] = 1;
+
+    int max_dim[3] = {0,0,0};
+
+    for (int i=0; i<num_of_dims; i++) {
+        max_dim[i] = input_dims[i];
+    }
+
+    // Setting variables required by the interface
+    opencl_local_buffer_usage_mask = 0;
+    opencl_local_buffer_size_in_bytes = 0;
+
+    if (num_of_dims) {
+        char item[8192];
+        if (type == VX_TYPE_FLOAT32) {
+            printf("opencl gen %d\n", (int)num_of_dims);
+            sprintf(item,
+                "#pragma OPENCL EXTENSION cl_amd_media_ops : enable\n"
+                "__kernel void %s(__global uchar * in, uint in_offset, uint4 in_stride, __global uchar * out, uint out_offset, uint4 out_stride, __global uchar * start, uint start_offset, uint4 start_stride, __global uchar * end, uint end_offset, uint4 end_stride, __global uchar * axes, uint axes_offset, uint4 axes_stride, __global uchar * step, uint step_offset, uint4 step_stride)\n"
+                "{ \n"
+                "   uint x = get_global_id(0);\n"
+                "   uint y = get_global_id(1);\n"
+                "   uint c = get_global_id(2);\n"
+                "   int num_dim = %d;\n"
+                "   int dim1 = num_dim - 1;\n"
+                "   int dim2 = num_dim - 2;\n"
+                "   int dim3 = num_dim - 3;\n"
+                "   int max_dim1 = %d;\n"
+                "   int max_dim2 = %d;\n"
+                "   int max_dim3 = %d;\n"
+                // "   dim1 = (dim1 >= 0) ? dim1 : 0;\n"
+                // "   dim2 = (dim2 >= 0) ? dim2 : 0;\n"
+                // "   dim3 = (dim3 >= 0) ? dim3 : 0;\n"
+                "   int start1 = *(__global int*)&start[start_offset + (dim1)*start_stride.s0];\n"
+                "   int start2 = *(__global int*)&start[start_offset + (dim2)*start_stride.s0];\n"
+                "   int start3 = *(__global int*)&start[start_offset + (dim3)*start_stride.s0];\n"
+                "   if (start1 > (max_dim1-1))\n"
+                "       start1 = max_dim1-1;\n"
+                "   else if (start1 < 0)\n"
+                "       start1 = max_dim + start1;\n"
+                "   if (start1 > (max_dim1-1))\n"
+                "       start1 = max_dim1-1;\n"
+                "   else if (start1 < 0)\n"
+                "       start1 = max_dim + start1;\n"
+                "   if (start1 > (max_dim1-1))\n"
+                "       start1 = max_dim1-1;\n"
+                "   else if (start1 < 0)\n"
+                "       start1 = max_dim + start1;\n"
+                
+                "   int index1 = *(__global int*)&step[step_offset + (dim1)*step_stride.s0] * x;\n"
+                "   int index2 = *(__global int*)&start[start_offset + (dim2)*start_stride.s0] + *(__global int*)&step[step_offset + (dim2)*step_stride.s0] * y;\n"
+                "   int index3 = *(__global int*)&start[start_offset + (dim3)*start_stride.s0] + *(__global int*)&step[step_offset + (dim3)*step_stride.s0] * c;\n"
+                "   index1 = (dim1 >= 0) ? index1 : 0;\n"
+                "   index2 = (dim2 >= 0) ? index2 : 0;\n"
+                "   index3 = (dim3 >= 0) ? index3 : 0;\n"
+                // "   int axis = *(__global int*)&axes[axes_offset + %d*axes_stride.s0];\n"
+                "   float value;\n"
+                "   uint offset;\n"
+                "   value = *(__global float*)&in[in_offset + index1*in_stride.s0 + index2*in_stride.s1 + index3*in_stride.s2];\n"
+                "   printf(\"x: %%d y: %%d c: %%d 1: %%d 2: %%d 3: %%d value %%f\\n\", x, y, c, index1, index2, index3, value); \n"
+                "   offset = out_offset + x*out_stride.s0 + y*out_stride.s1 + c*out_stride.s2;\n"
+                // "   if (axis == 0) {\n"
+                // "       value = *(__global float*)&in[in_offset + index1*in_stride.s0 + index2*in_stride.s1];\n"
+                // "       offset = out_offset + x*out_stride.s0 + y*out_stride.s1 + c*out_stride.s2;\n"
+                // "   }\n"
+                // "   else if (axis == 1) {\n"
+                // "       value = *(__global float*)&in[in_offset + indices*in_stride.s0 + c*in_stride.s1];\n"
+                // "       offset = out_offset + y*out_stride.s0 + c*out_stride.s1;\n"
+                // "   }\n"
+                // "   else if (axis == 2) {\n"
+                // "       value = *(__global float*)&in[in_offset + c*in_stride.s0];\n"
+                // "       offset = out_offset + c*out_stride.s0;\n"
+                // "   }\n"
+                "   out += offset;\n"
+                "   *(__global float *)&out[0] = value;\n"
+                "}\n", opencl_kernel_function_name, (int)num_of_dims, max_dim[0], max_dim[1], max_dim[2]);
+        }
+        else {
+            sprintf(item,
+                "#pragma OPENCL EXTENSION cl_amd_media_ops : enable\n"
+                "__kernel void %s(__global uchar * in, uint in_offset, uint4 in_stride, __global uchar * ind, uint ind_offset, uint4 ind_stride, __global uchar * out, uint out_offset, uint4 out_stride, uint axis) \n"
+                "{ \n"
+                "   uint x = get_global_id(0);\n"
+                "   uint y = get_global_id(1);\n"
+                "   uint c = get_global_id(2);\n"
+                "   int indices = *(__global int*)&ind[ind_offset + y*ind_stride.s0];\n"
+                "   half value;\n"
+                "   uint offset;\n"
+                "   if (axis == 0) {\n"
+                "       value = *(__global half*)&in[in_offset + x*in_stride.s0 + indices*in_stride.s1 + c*in_stride.s2];\n"
+                "       offset = out_offset + x*out_stride.s0 + y*out_stride.s1 + c*out_stride.s2;\n"
+                "   }\n"
+                "   else if (axis == 1) {\n"
+                "       value = *(__global half*)&in[in_offset + indices*in_stride.s0 + c*in_stride.s1];\n"
+                "       offset = out_offset + y*out_stride.s0 + c*out_stride.s1;\n"
+                "   }\n"
+                "   else if (axis == 2) {\n"
+                "       value = *(__global half*)&in[in_offset + c*in_stride.s0];\n"
+                "       offset = out_offset + c*out_stride.s0;\n"
+                "   }\n"
+                "   out += offset;\n"
+                "   *(__global half *)&out[0] = value;\n"
+                "}\n", opencl_kernel_function_name);
+        }
+        opencl_kernel_code = item;
+    }
+    return VX_SUCCESS;
+}
+//! \brief The kernel execution.
+static vx_status VX_CALLBACK host_kernel(vx_node node, const vx_reference * parameters, vx_uint32 num) 
+{
+    return VX_ERROR_NOT_IMPLEMENTED;
+}
+
+//! \brief The kernel publisher.
+vx_status publishSliceLayer(vx_context context) 
+{
+    vx_kernel kernel = vxAddUserKernel(context, "com.amd.nn_extension.slice_layer", VX_KERNEL_SLICE_LAYER_AMD, host_kernel, 4, validateSliceLayer, nullptr, nullptr);
+    ERROR_CHECK_OBJECT(kernel);
+
+    amd_kernel_query_target_support_f query_target_support_f = query_target_support;
+    amd_kernel_opencl_codegen_callback_f opencl_codegen_callback_f = opencl_codegen;
+    ERROR_CHECK_STATUS(vxSetKernelAttribute(kernel, VX_KERNEL_ATTRIBUTE_AMD_QUERY_TARGET_SUPPORT, &query_target_support_f, sizeof(query_target_support_f)));
+    ERROR_CHECK_STATUS(vxSetKernelAttribute(kernel, VX_KERNEL_ATTRIBUTE_AMD_OPENCL_CODEGEN_CALLBACK, &opencl_codegen_callback_f, sizeof(opencl_codegen_callback_f)));
+
+    ERROR_CHECK_STATUS(vxAddParameterToKernel(kernel, 0, VX_INPUT, VX_TYPE_TENSOR, VX_PARAMETER_STATE_REQUIRED));
+    ERROR_CHECK_STATUS(vxAddParameterToKernel(kernel, 1, VX_OUTPUT, VX_TYPE_TENSOR, VX_PARAMETER_STATE_REQUIRED));
+    ERROR_CHECK_STATUS(vxAddParameterToKernel(kernel, 2, VX_INPUT, VX_TYPE_TENSOR, VX_PARAMETER_STATE_REQUIRED));
+    ERROR_CHECK_STATUS(vxAddParameterToKernel(kernel, 3, VX_INPUT, VX_TYPE_TENSOR, VX_PARAMETER_STATE_REQUIRED));
+    ERROR_CHECK_STATUS(vxAddParameterToKernel(kernel, 4, VX_INPUT, VX_TYPE_TENSOR, VX_PARAMETER_STATE_OPTIONAL));
+    ERROR_CHECK_STATUS(vxAddParameterToKernel(kernel, 5, VX_INPUT, VX_TYPE_TENSOR, VX_PARAMETER_STATE_OPTIONAL));
+    
+    //finalize and release kernel object.
+    ERROR_CHECK_STATUS(vxFinalizeKernel(kernel));
+    ERROR_CHECK_STATUS(vxReleaseKernel(&kernel));
+
+    return VX_SUCCESS; 
+}
+
+VX_API_ENTRY vx_node VX_API_CALL vxSliceLayer(vx_graph graph, vx_tensor input, vx_tensor output, vx_tensor starts, vx_tensor ends, vx_tensor axes, vx_tensor steps) 
+{
+    vx_node node = NULL;
+    vx_context context = vxGetContext((vx_reference)graph);
+    if (vxGetStatus((vx_reference)context) == VX_SUCCESS) {
+        vx_reference params[] = {
+            (vx_reference) input,
+            (vx_reference) output,
+            (vx_reference) starts,
+            (vx_reference) ends,
+            (vx_reference) axes,
+            (vx_reference) steps
+        };
+        node = createNode(graph, VX_KERNEL_SLICE_LAYER_AMD, params, sizeof(params) / sizeof(params[0]));
+    }
+    return node;
+}
+
 
 // static vx_status VX_CALLBACK processSliceLayer(vx_node node, const vx_reference * parameters, vx_uint32 num)
 // {
@@ -337,266 +558,3 @@ static vx_status VX_CALLBACK query_target_support(vx_graph graph, vx_node node,
 
 //     return VX_SUCCESS;
 // }
-
-static vx_status VX_CALLBACK opencl_codegen(
-    vx_node node,                                  // [input] node
-    const vx_reference parameters[],               // [input] parameters
-    vx_uint32 num,                                 // [input] number of parameters
-    bool opencl_load_function,                     // [input]  false: normal OpenCL kernel; true: reserved
-    char opencl_kernel_function_name[64],          // [output] kernel_name for clCreateKernel()
-    std::string& opencl_kernel_code,               // [output] string for clCreateProgramWithSource()
-    std::string& opencl_build_options,             // [output] options for clBuildProgram()
-    vx_uint32& opencl_work_dim,                    // [output] work_dim for clEnqueueNDRangeKernel()
-    vx_size opencl_global_work[],                  // [output] global_work[] for clEnqueueNDRangeKernel()
-    vx_size opencl_local_work[],                   // [output] local_work[] for clEnqueueNDRangeKernel()
-    vx_uint32& opencl_local_buffer_usage_mask,     // [output] reserved: must be ZERO
-    vx_uint32& opencl_local_buffer_size_in_bytes   // [output] reserved: must be ZERO
-)
-{
-    //get input params
-    vx_status status;
-    vx_enum input_type, type;
-    vx_map_id map_id;
-    vx_size stride[4];
-    vx_size input_num_dims, input_dims[4], param_dims, output_num_dims, output_dims[4];
-    
-    ERROR_CHECK_STATUS(vxQueryTensor((vx_tensor)parameters[0], VX_TENSOR_NUMBER_OF_DIMS, &input_num_dims, sizeof(input_num_dims)));
-    ERROR_CHECK_STATUS(vxQueryTensor((vx_tensor)parameters[0], VX_TENSOR_DIMS, input_dims, sizeof(input_dims)));
-    ERROR_CHECK_STATUS(vxQueryTensor((vx_tensor)parameters[0], VX_TENSOR_DATA_TYPE, &input_type, sizeof(input_type)));
-
-    ERROR_CHECK_STATUS(vxQueryTensor((vx_tensor)parameters[1], VX_TENSOR_NUMBER_OF_DIMS, &output_num_dims, sizeof(output_num_dims)));
-    ERROR_CHECK_STATUS(vxQueryTensor((vx_tensor)parameters[1], VX_TENSOR_DIMS, output_dims, sizeof(output_dims)));
-
-    // check the number of param dimensions and type
-    ERROR_CHECK_STATUS(vxQueryTensor((vx_tensor)parameters[2], VX_TENSOR_DIMS, &param_dims, sizeof(param_dims)));   
-    ERROR_CHECK_STATUS(vxQueryTensor((vx_tensor)parameters[2], VX_TENSOR_DATA_TYPE, &type, sizeof(type)));
-
-    strcpy(opencl_kernel_function_name, "slice_layer");
-
-    //reverse input dims w,h,c,n- > n,c,h,w
-    int start = 0, end = input_num_dims-1;
-    while (start < end) {
-        int temp = input_dims[start];
-        input_dims[start] = input_dims[end];
-        input_dims[end] = temp;
-        start++;
-        end--;
-    }
-
-    std::vector<int> starts, ends, axes, steps;
-    int * ptr;
-    // copy starts index
-    status = vxMapTensorPatch((vx_tensor)parameters[2], 1, nullptr, nullptr, &map_id, stride, (void **)&ptr, VX_READ_ONLY, VX_MEMORY_TYPE_HOST);
-    if(status) {
-        std::cerr << "ERROR: vxMapTensorPatch() failed for starts tensor (" << status << ")" << std::endl;
-        return -1;
-    }
-    std::cout << "input dim: " << input_num_dims << " " << input_dims[0] << " " << ptr[1] <<  std::endl;
-    for(int i=0; i<param_dims; i++) {
-        int num_element = input_dims[input_num_dims-1-i];
-        std::cout << "num element "  << num_element << std::endl;
-        int value = (int)ptr[i];
-        std::cout << "value: " << value << std::endl;
-        if (value >= num_element) // If the value passed to starts is larger than the n(the number of elements in this dimension), it represents n
-            starts.push_back(num_element);
-        else if (value < 0) {
-            starts.push_back(num_element+value); // If a negative value is passed for any of the starts indices, it represents number of elements before the end of that dimension
-        }
-        else
-            starts.push_back(value);
-
-        std::cout << "start is " << starts[i] << std::endl;
-    }
-
-    vxUnmapTensorPatch((vx_tensor)parameters[2], map_id);
-
-    // copy ends index
-    status = vxMapTensorPatch((vx_tensor)parameters[3], 1, nullptr, nullptr, &map_id, stride, (void **)&ptr, VX_READ_ONLY, VX_MEMORY_TYPE_HOST);
-    if(status) {
-        std::cerr << "ERROR: vxMapTensorPatch() failed for ends tensor (" << status << ")" << std::endl;
-        return -1;
-    }
-
-    
-    for(int i=0; i<param_dims; i++) {
-        int num_element = input_dims[input_num_dims-1-i];
-        int value = (int)ptr[i];
-        if (value >= num_element) // If the value passed to ends is larger than the n(the number of elements in this dimension), it represents n
-            ends.push_back(num_element);
-        else if (value < 0) {
-            ends.push_back(num_element+value); // If a negative value is passed for any of the ends indices, it represents number of elements before the end of that dimension
-        }
-        else
-            ends.push_back(value);
-        
-        std::cout << "end is " << ends[i] << std::endl;
-    }
-
-    vxUnmapTensorPatch((vx_tensor)parameters[3], map_id);
-
-    // // copy axes index        
-    // if(parameters[4]) {
-    //     status = vxMapTensorPatch((vx_tensor)parameters[4], 1, nullptr, nullptr, &map_id, stride, (void **)&ptr, VX_READ_ONLY, VX_MEMORY_TYPE_HOST, 0);
-    //     if(status) {
-    //         std::cerr << "ERROR: vxMapTensorPatch() failed for axes tensor (" << status << ")" << std::endl;
-    //         return -1;
-    //     }
-
-    //     for(int i=0; i<param_dims; i++) {
-    //         axes.push_back((int)ptr[i]);
-    //     }
-
-    //     vxUnmapTensorPatch((vx_tensor)parameters[4], map_id);
-    // }
-    // else {
-    //     for(int i=0; i<param_dims; i++)
-    //         axes.push_back(i);
-    // }
-
-    // copy steps index
-    if(parameters[5]) {
-        status = vxMapTensorPatch((vx_tensor)parameters[5], 1, nullptr, nullptr, &map_id, stride, (void **)&ptr, VX_READ_ONLY, VX_MEMORY_TYPE_HOST);
-        if(status) {
-            std::cerr << "ERROR: vxMapTensorPatch() failed for steps tensor (" << status << ")" << std::endl;
-            return -1;
-        }
-
-        for(int i=0; i<param_dims; i++) {
-            steps.push_back((int)ptr[i]);
-            std::cout << "steps is " << steps[i] << std::endl;  
-        }
-        vxUnmapTensorPatch((vx_tensor)parameters[5], map_id);
-    }
-    else {
-        for(int i=0; i<param_dims; i++) {
-            steps.push_back(1);
-            std::cout << "steps is " << steps[i] << std::endl;
-        }
-    }
-
-    opencl_work_dim = 3;
-    opencl_global_work[0] = 1;
-    opencl_global_work[1] = 2;
-    opencl_global_work[2] = 2;
-    
-
-
-    // Setting variables required by the interface
-    opencl_local_buffer_usage_mask = 0;
-    opencl_local_buffer_size_in_bytes = 0;
-    printf("now opencl code gen\n");
-    if (input_num_dims) {
-        char item[8192];
-        if (type == VX_TYPE_FLOAT32) {
-            sprintf(item,
-                "#pragma OPENCL EXTENSION cl_amd_media_ops : enable\n"
-                "__kernel void %s(__global uchar * in, uint in_offset, uint4 in_stride, __global uchar * out, uint out_offset, uint4 out_stride, __global uchar * start, uint start_offset, uint4 start_stride, __global uchar * end, uint end_offset, uint4 end_stride, __global uchar * axes, uint axes_offset, uint4 axes_stride, __global uchar * step, uint step_offset, uint4 step_stride) \n"
-                "{ \n"
-                "   uint x = get_global_id(0);\n"
-                "   uint y = get_global_id(1);\n"
-                "   uint c = get_global_id(2);\n"
-                "   int index1 = *(__global int*)&start[start_offset + x*start_stride.s0] + *(__global int*)&step[step_offset + x*step_stride.s0] * x;\n"
-                "   int index2 = *(__global int*)&start[start_offset + y*start_stride.s0] + *(__global int*)&step[step_offset + y*step_stride.s0] * y;\n"
-                "   int index3 = *(__global int*)&start[start_offset + c*start_stride.s0] + *(__global int*)&step[step_offset + c*step_stride.s0] * c;\n"
-                // "   int axis = *(__global int*)&axes[axes_offset + %d*axes_stride.s0];\n"
-                "   float value;\n"
-                "   uint offset;\n"
-                "   value = *(__global float*)&in[in_offset + index1*in_stride.s0 + index2*in_stride.s1 + index3*in_stride.s2];\n"
-                "   offset = out_offset + x*out_stride.s0 + y*out_stride.s1 + c*out_stride.s2;\n"
-                // "   if (axis == 0) {\n"
-                // "       value = *(__global float*)&in[in_offset + index1*in_stride.s0 + index2*in_stride.s1];\n"
-                // "       offset = out_offset + x*out_stride.s0 + y*out_stride.s1 + c*out_stride.s2;\n"
-                // "   }\n"
-                // "   else if (axis == 1) {\n"
-                // "       value = *(__global float*)&in[in_offset + indices*in_stride.s0 + c*in_stride.s1];\n"
-                // "       offset = out_offset + y*out_stride.s0 + c*out_stride.s1;\n"
-                // "   }\n"
-                // "   else if (axis == 2) {\n"
-                // "       value = *(__global float*)&in[in_offset + c*in_stride.s0];\n"
-                // "       offset = out_offset + c*out_stride.s0;\n"
-                // "   }\n"
-                "   out += offset;\n"
-                "   *(__global float *)&out[0] = value;\n"
-                "}\n", opencl_kernel_function_name);
-        }
-        else {
-            sprintf(item,
-                "#pragma OPENCL EXTENSION cl_amd_media_ops : enable\n"
-                "__kernel void %s(__global uchar * in, uint in_offset, uint4 in_stride, __global uchar * ind, uint ind_offset, uint4 ind_stride, __global uchar * out, uint out_offset, uint4 out_stride, uint axis) \n"
-                "{ \n"
-                "   uint x = get_global_id(0);\n"
-                "   uint y = get_global_id(1);\n"
-                "   uint c = get_global_id(2);\n"
-                "   int indices = *(__global int*)&ind[ind_offset + y*ind_stride.s0];\n"
-                "   half value;\n"
-                "   uint offset;\n"
-                "   if (axis == 0) {\n"
-                "       value = *(__global half*)&in[in_offset + x*in_stride.s0 + indices*in_stride.s1 + c*in_stride.s2];\n"
-                "       offset = out_offset + x*out_stride.s0 + y*out_stride.s1 + c*out_stride.s2;\n"
-                "   }\n"
-                "   else if (axis == 1) {\n"
-                "       value = *(__global half*)&in[in_offset + indices*in_stride.s0 + c*in_stride.s1];\n"
-                "       offset = out_offset + y*out_stride.s0 + c*out_stride.s1;\n"
-                "   }\n"
-                "   else if (axis == 2) {\n"
-                "       value = *(__global half*)&in[in_offset + c*in_stride.s0];\n"
-                "       offset = out_offset + c*out_stride.s0;\n"
-                "   }\n"
-                "   out += offset;\n"
-                "   *(__global half *)&out[0] = value;\n"
-                "}\n", opencl_kernel_function_name);
-        }
-        opencl_kernel_code = item;
-    }
-    return VX_SUCCESS;
-}
-
-//! \brief The kernel execution.
-static vx_status VX_CALLBACK host_kernel(vx_node node, const vx_reference * parameters, vx_uint32 num) 
-{
-    return VX_ERROR_NOT_IMPLEMENTED;
-}
-
-//! \brief The kernel publisher.
-vx_status publishSliceLayer(vx_context context) 
-{
-    vx_kernel kernel = vxAddUserKernel(context, "com.amd.nn_extension.slice_layer", VX_KERNEL_SLICE_LAYER_AMD, host_kernel, 6, validateSliceLayer, nullptr, nullptr);
-    ERROR_CHECK_OBJECT(kernel);
-
-    amd_kernel_query_target_support_f query_target_support_f = query_target_support;
-    amd_kernel_opencl_codegen_callback_f opencl_codegen_callback_f = opencl_codegen;
-    ERROR_CHECK_STATUS(vxSetKernelAttribute(kernel, VX_KERNEL_ATTRIBUTE_AMD_QUERY_TARGET_SUPPORT, &query_target_support_f, sizeof(query_target_support_f)));
-    ERROR_CHECK_STATUS(vxSetKernelAttribute(kernel, VX_KERNEL_ATTRIBUTE_AMD_OPENCL_CODEGEN_CALLBACK, &opencl_codegen_callback_f, sizeof(opencl_codegen_callback_f)));
-
-    ERROR_CHECK_STATUS(vxAddParameterToKernel(kernel, 0, VX_INPUT, VX_TYPE_TENSOR, VX_PARAMETER_STATE_REQUIRED));
-    ERROR_CHECK_STATUS(vxAddParameterToKernel(kernel, 1, VX_OUTPUT, VX_TYPE_TENSOR, VX_PARAMETER_STATE_REQUIRED));
-    ERROR_CHECK_STATUS(vxAddParameterToKernel(kernel, 2, VX_INPUT, VX_TYPE_TENSOR, VX_PARAMETER_STATE_REQUIRED));
-    ERROR_CHECK_STATUS(vxAddParameterToKernel(kernel, 3, VX_INPUT, VX_TYPE_TENSOR, VX_PARAMETER_STATE_REQUIRED));
-    ERROR_CHECK_STATUS(vxAddParameterToKernel(kernel, 4, VX_INPUT, VX_TYPE_TENSOR, VX_PARAMETER_STATE_OPTIONAL));
-    ERROR_CHECK_STATUS(vxAddParameterToKernel(kernel, 5, VX_INPUT, VX_TYPE_TENSOR, VX_PARAMETER_STATE_OPTIONAL));
-    
-    //finalize and release kernel object.
-    ERROR_CHECK_STATUS(vxFinalizeKernel(kernel));
-    ERROR_CHECK_STATUS(vxReleaseKernel(&kernel));
-
-    return VX_SUCCESS; 
-}
-
-VX_API_ENTRY vx_node VX_API_CALL vxSliceLayer(vx_graph graph, vx_tensor input, vx_tensor output, vx_tensor starts, vx_tensor ends, vx_tensor axes, vx_tensor steps) 
-{
-    vx_node node = NULL;
-    vx_context context = vxGetContext((vx_reference)graph);
-    if (vxGetStatus((vx_reference)context) == VX_SUCCESS) {
-        vx_reference params[] = {
-            (vx_reference) input,
-            (vx_reference) output,
-            (vx_reference) starts,
-            (vx_reference) ends,
-            (vx_reference) axes,
-            (vx_reference) steps
-        };
-        node = createNode(graph, VX_KERNEL_SLICE_LAYER_AMD, params, sizeof(params) / sizeof(params[0]));
-    }
-    return node;
-}
-
