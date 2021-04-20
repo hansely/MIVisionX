@@ -1,6 +1,6 @@
 [![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![doc](https://img.shields.io/badge/doc-readthedocs-blueviolet)](https://gpuopen-professionalcompute-libraries.github.io/MIVisionX/)
-[![Build Status](https://travis-ci.org/GPUOpen-ProfessionalCompute-Libraries/MIVisionX.svg?branch=master)](https://travis-ci.org/GPUOpen-ProfessionalCompute-Libraries/MIVisionX)
+[![Build Status](https://travis-ci.com/GPUOpen-ProfessionalCompute-Libraries/MIVisionX.svg?branch=master)](https://travis-ci.com/GPUOpen-ProfessionalCompute-Libraries/MIVisionX)
 
 <p align="center"><img width="70%" src="docs/images/MIVisionX.png" /></p>
 
@@ -165,10 +165,10 @@ For the convenience of the developer, we here provide the setup script which wil
   python MIVisionX-setup.py --directory [setup directory - optional (default:~/)]
                             --installer [Package management tool - optional (default:apt-get) [options: Ubuntu:apt-get;CentOS:yum]]
                             --opencv    [OpenCV Version - optional (default:3.4.0)]
-                            --miopen    [MIOpen Version - optional (default:2.5.0)]
+                            --miopen    [MIOpen Version - optional (default:2.10.0)]
                             --miopengemm[MIOpenGEMM Version - optional (default:1.1.5)]
                             --protobuf  [ProtoBuf Version - optional (default:3.12.0)]
-                            --rpp       [RPP Version - optional (default:0.6)]
+                            --rpp       [RPP Version - optional (default:0.7)]
                             --ffmpeg    [FFMPEG Installation - optional (default:no) [options:yes/no]]
                             --rali      [MIVisionX RALI Dependency Install - optional (default:yes) [options:yes/no]]
                             --neural_net[MIVisionX Neural Net Dependency Install - optional (default:yes) [options:yes/no]]
@@ -378,15 +378,15 @@ sudo docker run -it --device=/dev/kfd --device=/dev/dri --cap-add=SYS_RAWIO --de
 * Linux distribution
   + Ubuntu - `18.04` / `20.04`
   + CentOS - `7` / `8`
-* ROCm: rocm-dkms - `4.0.0.40000-23`
+* ROCm: rocm-dkms - `4.1.0.40100-26`
 * rocm-cmake - [github master:ac45c6e](https://github.com/RadeonOpenCompute/rocm-cmake/tree/master)
 * MIOpenGEMM - [1.1.5](https://github.com/ROCmSoftwarePlatform/MIOpenGEMM/releases/tag/1.1.5)
-* MIOpen - [2.5.0](https://github.com/ROCmSoftwarePlatform/MIOpen/releases/tag/2.5.0)
+* MIOpen - [2.10.0](https://github.com/ROCmSoftwarePlatform/MIOpen/releases/tag/2.10.0)
 * Protobuf - [V3.12.0](https://github.com/protocolbuffers/protobuf/releases/tag/v3.12.0)
 * OpenCV - [3.4.0](https://github.com/opencv/opencv/releases/tag/3.4.0)
-* RPP - [0.6](https://github.com/GPUOpen-ProfessionalCompute-Libraries/rpp/releases/tag/0.6)
+* RPP - [0.7](https://github.com/GPUOpen-ProfessionalCompute-Libraries/rpp/releases/tag/0.7)
 * Dependencies for all the above packages
-* MIVisionX Setup Script - `V1.8.7`
+* MIVisionX Setup Script - `V1.9.5`
 
 ### Latest Release
 

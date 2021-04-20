@@ -40,4 +40,4 @@ RUN yum -y install libsqlite3x-devel bzip2-devel openssl-devel python-devel pyth
         ./autogen.sh && ./configure && make -j8 && make check -j8 && make install
 # install MIVisionX
 RUN git clone https://github.com/GPUOpen-ProfessionalCompute-Libraries/MIVisionX.git && mkdir build && cd build && \
-        cmake ../MIVisionX && make -j8 && make install
+        cmake3 ../MIVisionX && make -j8 && make install
