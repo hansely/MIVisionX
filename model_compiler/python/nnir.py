@@ -334,6 +334,7 @@ class IrGraph(object):
         for node in self.nodes:
             for output in node.outputs:
                 count+=1
+                print (node.type)
                 if node.type in ['sum', 'add', 'sub', 'mul', 'muladd', 'min', 'max', 'clamp', 'exp', 'log', 'batch_norm', 'relu', 'leaky_relu', 'sigmoid', 'softmax', 'copy']:
                     input = self.tensor_dict[node.inputs[0]]
                     local = IrTensor()
@@ -460,22 +461,42 @@ class IrGraph(object):
                     self.addLocal(local)
                 elif node.type in ['slice']:
                     input = self.tensor_dict[node.inputs[0]]
-                    starts = np.frombuffer(self.binaries[node.inputs[1]], dtype=np.int32)
-                    ends = np.frombuffer(self.binaries[node.inputs[2]], dtype=np.int32)
-                    if node.inputs[3]:
-                        axes = np.frombuffer(self.binaries[node.inputs[3]], dtype=np.int32)
+                    out_shape = []
+                    if node.inputs[1] not in self.binaries or node.inputs[2] not in self.binaries:
+                        nextNode = self.nodes[nodeCount+1]
+                        if nextNode.type not in ['add', 'sub']:
+                            raise ValueError("slice: shape inference for slice not supported")
+                        else:
+                            nextTensor = nextNode.inputs[1]
+                            out_shape = nextTensor.shape
                     else:
-                        axes = [0,1,2,3]
-                    
-                    if node.inputs[4]:
-                        steps = np.frombuffer(self.binaries[node.inputs[4]], dtype=np.int32)
-                    else:
-                        steps = [1,1,1,1]
-                    
+                        starts = np.frombuffer(self.binaries[node.inputs[2]], dtype=np.int64)
+                        ends = np.frombuffer(self.binaries[node.inputs[3]], dtype=np.int64)
+                        if node.inputs[4]:
+                            steps = np.frombuffer(self.binaries[node.inputs[4]], dtype=np.int64)
+                        else:
+                            steps = [1,1,1,1]
+
+                        for i in range(len(starts)):
+                            dim_count = 0
+                            value = starts[i]
+                            if value < 0:
+                                value += input.shape[i]
+                            value = min(value, input.shape[i])
+                            end = ends[i]
+                            if end < 0:
+                                end += input.shape[i]
+                            end = min(end, input.shape[i])
+                            
+                            while(value < end):
+                                dim_count += 1
+                                value += steps[i]
+                            out_shape.append(dim_count)
+                            
                     #tbd: check the shape once the model is ready
                     local = IrTensor()
-                    local.setName(name)
-                    local.setInfo(input.type, input.shape)
+                    local.setName(output)
+                    local.setInfo(input.type, out_shape)
                     local.setFormat(input.format)
                     self.addLocal(local)
                 elif node.type in ['squeeze']:
@@ -805,6 +826,7 @@ class IrGraph(object):
                     local.setName(output)
                     local.setInfo(input.type, out_shape)
                     local.setFormat(input.format)
+                    self.addLocal(local)
                 elif node.type in ['topk']:
                     input = self.tensor_dict[node.inputs[0]]
                     k = self.tensor_dict[node.inputs[1]]
