@@ -563,8 +563,8 @@ class IrGraph(object):
                         if param[dim] == -1:
                             out_shape[dim+axis_start] = (int)(icount // ocount)
                             ocount *= out_shape[dim+axis_start]
-                    if icount != ocount:
-                        raise ValueError("reshape: mismatch detected: " + node.inputs[0] + ":" + str(input.shape) + " " + node.outputs[0] + ":" + str(param))
+                    #if icount != ocount:
+                    #    raise ValueError("reshape: mismatch detected: " + node.inputs[0] + ":" + str(input.shape) + " " + node.outputs[0] + ":" + str(param))
                     local = IrTensor()
                     local.setName(output)
                     local.setInfo(input.type, out_shape)
