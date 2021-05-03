@@ -331,6 +331,7 @@ class IrGraph(object):
         self.locals = []
         count = 0
         constantCount = 0
+        nodeCount = 0
         for node in self.nodes:
             for output in node.outputs:
                 count+=1
@@ -458,6 +459,7 @@ class IrGraph(object):
                     local.setInfo(input.type, shape)
                     local.setFormat(input.format)
                     self.addLocal(local)
+                    self.addBinary(output, shape)
                 elif node.type in ['slice']:
                     input = self.tensor_dict[node.inputs[0]]
                     shape = [input.shape[0], input.shape[1] // len(node.outputs), input.shape[2], input.shape[3]]
@@ -534,7 +536,8 @@ class IrGraph(object):
                     param = node.attr.get('shape')
                     if not param:
                         if self.tensor_dict[node.inputs[1]] in self.locals:
-                            param = (self.readBinary(tensor_name)).tolist()
+                            tensor_name = node.inputs[1]
+                            param = (self.readBinary(tensor_name))
                         else:
                             param = self.tensor_dict[node.inputs[1]].shape
                             self.removeTensor(node.inputs[1])
