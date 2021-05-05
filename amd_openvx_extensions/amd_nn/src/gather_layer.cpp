@@ -224,4 +224,3 @@ VX_API_ENTRY vx_node VX_API_CALL vxGatherLayer(vx_graph graph, vx_tensor input, 
 
     return node;
 }
-
