@@ -101,6 +101,7 @@ onnx2ir_op_type = {
     'Constant'           : 'constant',
     'Gather'             : 'gather',
     'TopK'               : 'topk',
+    'Slice'              : 'slice',
     'ReduceMin'          : 'reduce_min',
     'Tile'               : 'tile',
 }
