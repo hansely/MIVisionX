@@ -331,7 +331,6 @@ class IrGraph(object):
         self.locals = []
         count = 0
         constantCount = 0
-        nodeCount = 0
         for node in self.nodes:
             for output in node.outputs:
                 count+=1
