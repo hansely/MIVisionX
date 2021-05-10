@@ -334,7 +334,6 @@ class IrGraph(object):
         for node in self.nodes:
             for output in node.outputs:
                 count+=1
-                print (node.type)
                 if node.type in ['sum', 'add', 'sub', 'mul', 'muladd', 'min', 'max', 'clamp', 'exp', 'log', 'batch_norm', 'relu', 'leaky_relu', 'sigmoid', 'softmax', 'copy']:
                     input = self.tensor_dict[node.inputs[0]]
                     local = IrTensor()
@@ -440,7 +439,14 @@ class IrGraph(object):
                 elif node.type in ['concat']:
                     input = self.tensor_dict[node.inputs[0]]
                     axis = node.attr.get('axis')
-                    if axis == 1:
+                    if axis == 0:
+                        shape = [0, input.shape[1], input.shape[2], input.shape[3]]
+                        for name in node.inputs:
+                            lshape = self.tensor_shapes[name]
+                            if shape[:0] + shape[1:] != lshape[:0] + lshape[1:]:
+                                raise ValueError("concat: mismatch detected: " + node.inputs[0] + ":" + str(shape) + " " + name + ":" + str(lshape))
+                            shape[0] = shape[0] + lshape[0]
+                    elif axis == 1:
                         shape = [input.shape[0], 0, input.shape[2], input.shape[3]]
                         for name in node.inputs:
                             lshape = self.tensor_shapes[name]
@@ -459,6 +465,7 @@ class IrGraph(object):
                     local.setInfo(input.type, shape)
                     local.setFormat(input.format)
                     self.addLocal(local)
+                    self.addBinary(output, shape)
                 elif node.type in ['slice']:
                     input = self.tensor_dict[node.inputs[0]]
                     out_shape = []
@@ -525,6 +532,8 @@ class IrGraph(object):
                     if len(out_shape) < 4:
                         for i in range(len(axes)):
                             out_shape.insert(axes[i], 1)
+                    while(len(out_shape) < 4):
+                        out_shape.append(1)
                     node.attr.set('shape', out_shape)
                     node.type = 'reshape'
                     local = IrTensor()
@@ -566,7 +575,8 @@ class IrGraph(object):
                     param = node.attr.get('shape')
                     if not param:
                         if self.tensor_dict[node.inputs[1]] in self.locals:
-                            param = (self.readBinary(tensor_name)).tolist()
+                            tensor_name = node.inputs[1]
+                            param = (self.readBinary(tensor_name))
                         else:
                             param = self.tensor_dict[node.inputs[1]].shape
                             self.removeTensor(node.inputs[1])
@@ -639,7 +649,7 @@ class IrGraph(object):
                     constant_tensor = IrTensor()
                     constant_tensor.setName(tensor_name)
                     constant_tensor.setInfo(tensorType, shape)
-                    self.addVariable(constant_tensor)                    
+                    self.addVariable(constant_tensor)
                     self.addBinary(tensor_name, value)
                     
                     node.type = 'copy'
@@ -670,6 +680,9 @@ class IrGraph(object):
                     elif axes == [0, 3, 1, 2]:
                         format = 'NCHW'
                         shape = [input.shape[0], input.shape[3], input.shape[1], input.shape[2]]
+                    elif axes == [0, 2, 1]:
+                        format = 'NCHW'
+                        shape = [input.shape[0], input.shape[2], input.shape[1], input.shape[3]]
                     else:
                         raise ValueError("transpose: unsupported transpose: " + input.toString() + " " + str(axes))
                     local = IrTensor()
@@ -701,6 +714,9 @@ class IrGraph(object):
                     elif input.format == 'NHWC' and order == [0, 3, 1, 2]:
                         format = 'NCHW'
                         shape = [input.shape[0], input.shape[3], input.shape[1], input.shape[2]]
+                    elif axes == [0, 2, 1]:
+                        format = 'NCHW'
+                        shape = [input.shape[0], input.shape[2], input.shape[1], input.shape[3]]
                     else:
                         raise ValueError("permute: unsupported permute: " + input.toString() + " " + str(axes))
                     local = IrTensor()
