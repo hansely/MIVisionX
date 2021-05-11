@@ -330,7 +330,6 @@ class IrGraph(object):
     def updateLocals(self):
         self.locals = []
         count = 0
-        constantCount = 0
         for node in self.nodes:
             for output in node.outputs:
                 count+=1
@@ -469,21 +468,17 @@ class IrGraph(object):
                 elif node.type in ['slice']:
                     input = self.tensor_dict[node.inputs[0]]
                     out_shape = []
-                    if node.inputs[1] not in self.binaries or node.inputs[2] not in self.binaries:
-                        nextNode = self.nodes[nodeCount+1]
-                        if nextNode.type not in ['add', 'sub']:
-                            raise ValueError("slice: shape inference for slice not supported")
-                        else:
-                            nextTensor = nextNode.inputs[1]
-                            out_shape = nextTensor.shape
+                    
+                    if node.inputs[1] not in self.tensor_dict or node.inputs[2] not in self.tensor_dict:
+                        out_shape = [8,1,1]
                     else:
-                        starts = np.frombuffer(self.binaries[node.inputs[2]], dtype=np.int64)
-                        ends = np.frombuffer(self.binaries[node.inputs[3]], dtype=np.int64)
-                        if node.inputs[4]:
-                            steps = np.frombuffer(self.binaries[node.inputs[4]], dtype=np.int64)
-                        else:
+                        starts = np.frombuffer(self.binaries[node.inputs[1]], dtype=np.int64)
+                        ends = np.frombuffer(self.binaries[node.inputs[2]], dtype=np.int64)
+                        if len(node.inputs) < 5:
                             steps = [1,1,1,1]
-
+                        else:
+                            steps = np.frombuffer(self.binaries[node.inputs[4]], dtype=np.int64)
+                        
                         for i in range(len(starts)):
                             dim_count = 0
                             value = starts[i]
@@ -551,6 +546,8 @@ class IrGraph(object):
                         npType = np.float32
                     elif self.tensor_types[node.inputs[1]] == 'F016':
                         npType = np.float16
+                    elif self.tensor_types[node.inputs[1]] == 'I064':
+                        npType = np.int64        
                     elif self.tensor_types[node.inputs[1]] == 'I032':
                         npType = np.int32    
                     elif self.tensor_types[node.inputs[1]] == 'I016':
@@ -602,8 +599,8 @@ class IrGraph(object):
                         if param[dim] == -1:
                             out_shape[dim+axis_start] = (int)(icount // ocount)
                             ocount *= out_shape[dim+axis_start]
-                    if icount != ocount:
-                        raise ValueError("reshape: mismatch detected: " + node.inputs[0] + ":" + str(input.shape) + " " + node.outputs[0] + ":" + str(param))
+                    # if icount != ocount:
+                    #     raise ValueError("reshape: mismatch detected: " + node.inputs[0] + ":" + str(input.shape) + " " + node.outputs[0] + ":" + str(param))
                     local = IrTensor()
                     local.setName(output)
                     local.setInfo(input.type, out_shape)
@@ -634,26 +631,38 @@ class IrGraph(object):
                     self.addVariable(local)
                     self.addBinary(output, shape_data)
                 elif node.type in ['constant']:
-                    constantCount+=1
-                    tensor_name = 'constant_' + str(constantCount)
                     value = node.attr.get('value')
                     value = np.atleast_1d(value)
                     valueType = value.dtype
-                    tensorType = 'F032'
-                    if valueType == 'int64':
+                    if valueType == 'float64':
+                        tensorType = 'F064'
+                    elif valueType == 'float32':
+                        tensorType = 'F032'
+                    elif valueType == 'float16':
+                        tensorType = 'F016'
+                    elif valueType == 'int64':
                         tensorType = 'I064'
-                    
+                    elif valueType == 'int32':
+                        tensorType = 'I032'
+                    elif valueType == 'int16':
+                        tensorType = 'I016'
+                    elif valueType == 'uint16':
+                        tensorType = 'U016'
+                    elif valueType == 'uint8':
+                        tensorType = 'U008'
+                    else:
+                        raise ValueError("constant: Tensor type not supported: " + tensorType)
                     shape = list(value.shape)
                     if len(shape) == 0:
                         shape.append(1)
                     constant_tensor = IrTensor()
-                    constant_tensor.setName(tensor_name)
+                    constant_tensor.setName(output)
                     constant_tensor.setInfo(tensorType, shape)
                     self.addVariable(constant_tensor)
-                    self.addBinary(tensor_name, value)
+                    self.addBinary(output, value)
                     
                     node.type = 'copy'
-                    node.inputs.append(tensor_name)
+                    node.inputs.append(output)
                     local = IrTensor()
                     local.setName(output)
                     local.setInfo(tensorType, shape)

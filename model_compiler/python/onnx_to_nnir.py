@@ -104,6 +104,7 @@ onnx2ir_op_type = {
     'Slice'              : 'slice',
     'ReduceMin'          : 'reduce_min',
     'Tile'               : 'tile',
+    'ConstantOfShape' : 'copy'
 }
 
 onnx2ir_data_type = [
@@ -157,6 +158,9 @@ def onnx_node_to_ir_node(onnx_node):
     else:
         print('ERROR: ONNX operation "%s" not supported yet' % (onnx_node.op_type))
         sys.exit(1)
+    # if(onnx_node.op_type == 'Constant'):
+    #     print(onnx_node)
+        # print(onnx_node.input[1])
     node.set(type, [onnx_name_to_ir_name(name) for name in onnx_node.input], \
                    [onnx_name_to_ir_name(name) for name in onnx_node.output], \
                    onnx_node_to_ir_attr(onnx_node))
@@ -179,7 +183,6 @@ def onnx_graph_to_ir_graph(onnx_graph):
     initializerList = []
     shapeList = []
     inputUser = False
-                
     for onnx_node in onnx_graph.node:
         for tensor in onnx_graph.initializer:
             if onnx_node.op_type == 'Reshape' and len(onnx_node.input) == 2 and tensor.name == onnx_node.input[1]:
