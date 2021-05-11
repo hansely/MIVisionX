@@ -332,7 +332,6 @@ class IrGraph(object):
         count = 0
         for node in self.nodes:
             for output in node.outputs:
-                print(node.type, output)
                 count+=1
                 if node.type in ['sum', 'add', 'sub', 'mul', 'muladd', 'min', 'max', 'clamp', 'exp', 'log', 'batch_norm', 'relu', 'leaky_relu', 'sigmoid', 'softmax', 'copy']:
                     input = self.tensor_dict[node.inputs[0]]
@@ -439,6 +438,8 @@ class IrGraph(object):
                 elif node.type in ['concat']:
                     input = self.tensor_dict[node.inputs[0]]
                     axis = node.attr.get('axis')
+                    while(len(input.shape) < 4):
+                         input.shape.append(1)
                     if axis == 0:
                         shape = [0, input.shape[1], input.shape[2], input.shape[3]]
                         for name in node.inputs:
@@ -465,7 +466,7 @@ class IrGraph(object):
                     local.setInfo(input.type, shape)
                     local.setFormat(input.format)
                     self.addLocal(local)
-                    self.addBinary(output, shape)
+                    self.addBinary(output, bytes(shape))
                 elif node.type in ['slice']:
                     input = self.tensor_dict[node.inputs[0]]
                     out_shape = []
@@ -578,7 +579,7 @@ class IrGraph(object):
                         else:
                             param = self.tensor_dict[node.inputs[1]].shape
                             self.removeTensor(node.inputs[1])
-                        param = param if isinstance(param,list) else param.tolist()
+                        param = param if isinstance(param,list) else list(param)
                         node.attr.set('shape', param)
                     axis_start = node.attr.get('axis')
                     axis_count = node.attr.get('count')
