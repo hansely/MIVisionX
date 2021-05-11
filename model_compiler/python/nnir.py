@@ -332,6 +332,7 @@ class IrGraph(object):
         count = 0
         for node in self.nodes:
             for output in node.outputs:
+                print(node.type, output)
                 count+=1
                 if node.type in ['sum', 'add', 'sub', 'mul', 'muladd', 'min', 'max', 'clamp', 'exp', 'log', 'batch_norm', 'relu', 'leaky_relu', 'sigmoid', 'softmax', 'copy']:
                     input = self.tensor_dict[node.inputs[0]]
@@ -577,6 +578,7 @@ class IrGraph(object):
                         else:
                             param = self.tensor_dict[node.inputs[1]].shape
                             self.removeTensor(node.inputs[1])
+                        param = param if isinstance(param,list) else param.tolist()
                         node.attr.set('shape', param)
                     axis_start = node.attr.get('axis')
                     axis_count = node.attr.get('count')
