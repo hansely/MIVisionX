@@ -174,7 +174,7 @@ void nn_layer_test_dumpBuffer(const char * fileNameFormat, vx_tensor tensor)
     vx_enum usage = VX_READ_ONLY;
     
     vx_size count_tensor = tensor_dims[0]*tensor_dims[1]*tensor_dims[2]*tensor_dims[3];
-    status = vxMapTensorPatch(tensor, 4, nullptr, nullptr, &map_id, stride, (void **)&ptr, usage, VX_MEMORY_TYPE_HOST, 0);
+    status = vxMapTensorPatch(tensor, 4, nullptr, nullptr, &map_id, stride, (void **)&ptr, usage, VX_MEMORY_TYPE_HOST);
     if(status)
     {
         std::cerr << "ERROR: vxMapTensorPatch() failed for layer dump tensor (" << status << ")" << std::endl;
@@ -222,6 +222,7 @@ SHARED_PUBLIC vx_status VX_API_CALL vxPublishKernels(vx_context context)
     ERROR_CHECK_STATUS(publishPoolingLayer(context));
     ERROR_CHECK_STATUS(publishSoftmaxLayer(context));
     ERROR_CHECK_STATUS(publishNormalizationLayer(context));
+    ERROR_CHECK_STATUS(publishLocalResponseNormalizationLayer(context));
     ERROR_CHECK_STATUS(publishActivationLayer(context));
     ERROR_CHECK_STATUS(publishROIPoolingLayer(context));
     ERROR_CHECK_STATUS(publishDeconvolutionLayer(context));
@@ -249,6 +250,11 @@ SHARED_PUBLIC vx_status VX_API_CALL vxPublishKernels(vx_context context)
     ERROR_CHECK_STATUS(publishDetectionOutputLayer(context));
     ERROR_CHECK_STATUS(publishTensorExp(context));
     ERROR_CHECK_STATUS(publishTensorLog(context));
+    ERROR_CHECK_STATUS(publishNMSLayer(context));
+    ERROR_CHECK_STATUS(publishGatherLayer(context));
+    ERROR_CHECK_STATUS(publishTopKLayer(context));
+    ERROR_CHECK_STATUS(publishReduceMinLayer(context));
+    ERROR_CHECK_STATUS(publishTileLayer(context));
 
     // register drama rules
     AgoNodeMergeRule softmax_rule = {

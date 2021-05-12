@@ -122,7 +122,7 @@ static vx_status VX_CALLBACK validateConcatLayer(vx_node node, const vx_referenc
         ERROR_CHECK_STATUS(vxQueryScalar((vx_scalar)parameters[9], VX_SCALAR_TYPE, &scalar_type, sizeof(scalar_type)));
         if(scalar_type != VX_TYPE_INT32) return VX_ERROR_INVALID_TYPE;
         ERROR_CHECK_STATUS(vxCopyScalar((vx_scalar)parameters[9], &axis, VX_READ_ONLY, VX_MEMORY_TYPE_HOST));
-        if(axis <= 0 || axis > 3) return ERRMSG(VX_ERROR_INVALID_VALUE, "validate: concat: #10 scalar type=%d (must be greater than 0 and lesser than 3)\n", axis);        
+        if(axis < 0 || axis > 3) return ERRMSG(VX_ERROR_INVALID_VALUE, "validate: concat: #10 scalar type=%d (must be greater than 0 and lesser than 3)\n", axis);        
     }
     else
     {
@@ -144,6 +144,8 @@ static vx_status VX_CALLBACK validateConcatLayer(vx_node node, const vx_referenc
         num_channels = input1_dims[2];
     else if(axis == 2)
         num_channels = input1_dims[1];
+    else if(axis == 0)
+        num_channels = input1_dims[0];
 
     ERROR_CHECK_STATUS(vxQueryTensor((vx_tensor)parameters[2], VX_TENSOR_NUMBER_OF_DIMS, &num_dims, sizeof(num_dims)));
     ERROR_CHECK_STATUS(vxQueryTensor((vx_tensor)parameters[2], VX_TENSOR_DATA_TYPE, &in_type, sizeof(type)));
@@ -166,6 +168,13 @@ static vx_status VX_CALLBACK validateConcatLayer(vx_node node, const vx_referenc
                     input1_dims[0], input1_dims[1], input1_dims[2], input1_dims[3],
                     input2_dims[0], input2_dims[1], input2_dims[2], input2_dims[3]);
         num_channels += input2_dims[1];
+    }
+    else if (axis == 0){
+        if (input1_dims[3] != input2_dims[3] || input1_dims[2] != input2_dims[2] || input1_dims[1] != input2_dims[1])
+            return ERRMSG(VX_ERROR_INVALID_DIMENSION, "validate: concat: #2 dims input1[%ld,%ld,%ld,%ld] != dims_input2[%ld,%ld,%ld,%ld]\n",
+                    input1_dims[0], input1_dims[1], input1_dims[2], input1_dims[3],
+                    input2_dims[0], input2_dims[1], input2_dims[2], input2_dims[3]);
+        num_channels += input2_dims[0];
     }
     
     int i = 3;
@@ -191,6 +200,14 @@ static vx_status VX_CALLBACK validateConcatLayer(vx_node node, const vx_referenc
                     inputn_dims[0], inputn_dims[1], inputn_dims[2], inputn_dims[3]);
             num_channels += inputn_dims[1];
         }
+        else if(axis == 0)
+        {   
+            if (input1_dims[3] != inputn_dims[3] || input1_dims[2] != inputn_dims[2] || input1_dims[1] != inputn_dims[1])
+                return ERRMSG(VX_ERROR_INVALID_DIMENSION, "validate: concat: #%d dims input1[%ld,%ld,%ld,%ld] != dims_input%d[%ld,%ld,%ld,%ld]\n", i,
+                    input1_dims[0], input1_dims[1], input1_dims[2], input1_dims[3], i,
+                    inputn_dims[0], inputn_dims[1], inputn_dims[2], inputn_dims[3]);
+            num_channels += inputn_dims[0];
+        }
 
         i++;
     }
@@ -211,6 +228,13 @@ static vx_status VX_CALLBACK validateConcatLayer(vx_node node, const vx_referenc
     else if(axis == 2)
     {
         if((input1_dims[0] != output_dims[0]) || (input1_dims[2] != output_dims[2]) || (num_channels != output_dims[1]) || (input1_dims[3] != output_dims[3]))
+            return ERRMSG(VX_ERROR_INVALID_DIMENSION, "validate: concat: #all dims total input[%ld,%ld,%ld,%ld] != dims_output[%ld,%ld,%ld,%ld]\n",
+                        input1_dims[0], input1_dims[1], num_channels, input1_dims[3],
+                        output_dims[0], output_dims[1], output_dims[2], output_dims[3]);
+    }
+    else if(axis == 0)
+    {    
+        if((input1_dims[1] != output_dims[1]) || (input1_dims[2] != output_dims[2]) || (num_channels != output_dims[0]) || (input1_dims[3] != output_dims[3]))
             return ERRMSG(VX_ERROR_INVALID_DIMENSION, "validate: concat: #all dims total input[%ld,%ld,%ld,%ld] != dims_output[%ld,%ld,%ld,%ld]\n",
                         input1_dims[0], input1_dims[1], num_channels, input1_dims[3],
                         output_dims[0], output_dims[1], output_dims[2], output_dims[3]);

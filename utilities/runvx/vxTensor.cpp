@@ -89,8 +89,19 @@ int CVxParamTensor::Shutdown(void)
 			m_memory_handle[active_handle] = nullptr;
 		}
 	}
+#elif ENABLE_HIP
+    else if (m_memory_type == VX_MEMORY_TYPE_HIP) {
+		for (vx_size active_handle = 0; active_handle < m_num_handles; active_handle++) {
+			if (m_memory_handle[active_handle]) {
+				if (m_memory_handle[active_handle]) {
+				    hipFree(m_memory_handle[active_handle]);
+				}
+				m_memory_handle[active_handle] = nullptr;
+			}
+		}
+	}
 #endif
-	return 0;
+    return 0;
 }
 
 int CVxParamTensor::Initialize(vx_context context, vx_graph graph, const char * desc)
@@ -158,6 +169,19 @@ int CVxParamTensor::Initialize(vx_context context, vx_graph graph, const char * 
 					ReportError("ERROR: clCreateBuffer(*,CL_MEM_READ_WRITE,%d,NULL,*) failed (%d)\n", (int)size, err);
 			}
 		}
+#elif ENABLE_HIP
+        else if (m_memory_type == VX_MEMORY_TYPE_HIP) {
+            int hip_device = -1;
+            vx_status status = vxQueryContext(context, VX_CONTEXT_ATTRIBUTE_AMD_HIP_DEVICE, &hip_device, sizeof(hip_device));
+            if (status || hip_device<0 )
+                ReportError("ERROR: vxQueryContext(*,VX_CONTEXT_ATTRIBUTE_AMD_HIP_DEVICE,...) failed (%d, %d)\n", status, hip_device);
+			for (vx_size active_handle = 0; active_handle < m_num_handles; active_handle++) {
+				vx_size size = m_dims[m_num_of_dims-1] * m_stride[m_num_of_dims-1];
+				hipError_t err = hipMalloc(&m_memory_handle[active_handle], size);
+				if (!m_memory_handle[active_handle] || err != hipSuccess)
+					ReportError("ERROR: VxTensor hipMalloc(%d) failed (%d)\n", (int)size, err);
+			}
+		}
 #endif
 		else ReportError("ERROR: invalid memory-type enum: %s\n", memory_type_str);
 		m_active_handle = 0;
@@ -189,6 +213,8 @@ int CVxParamTensor::InitializeIO(vx_context context, vx_graph graph, vx_referenc
 		m_size = 1;
 	else if(m_data_type == VX_TYPE_UINT16 || m_data_type == VX_TYPE_INT16 || m_data_type == VX_TYPE_FLOAT16)
 		m_size = 2;
+	else if(m_data_type == VX_TYPE_INT64)
+		m_size = 8;
 	else
 	    m_size = 4;
 	for (vx_uint32 i = 0; i < m_num_of_dims; i++) {
@@ -441,6 +467,7 @@ int CVxParamTensor::WriteFrame(int frameNumber)
 		else if(m_data_type == VX_TYPE_UINT16) h3.data_type = 3, h3.bit_width = 16;
 		else if(m_data_type == VX_TYPE_INT32) h3.data_type = 2, h3.bit_width = 32;
 		else if(m_data_type == VX_TYPE_UINT32) h3.data_type = 3, h3.bit_width = 32;
+		else if(m_data_type == VX_TYPE_INT64) h3.data_type = 2, h3.bit_width = 64;
 		fwrite(&h1, 1, sizeof(h1), fp);
 		fwrite(&h2, 1, h1.num_dims * sizeof(vx_uint32), fp);
 		fwrite(&h3, 1, sizeof(h3), fp);
@@ -473,7 +500,7 @@ int CVxParamTensor::CompareFrame(int frameNumber)
 	vx_map_id map_id;
 	vx_size stride[MAX_TENSOR_DIMENSIONS];
 	vx_uint8 * ptr;
-	vx_status status = vxMapTensorPatch(m_tensor, m_num_of_dims, nullptr, nullptr, &map_id, stride, (void **)&ptr, VX_READ_ONLY, VX_MEMORY_TYPE_HOST, 0);
+	vx_status status = vxMapTensorPatch(m_tensor, m_num_of_dims, nullptr, nullptr, &map_id, stride, (void **)&ptr, VX_READ_ONLY, VX_MEMORY_TYPE_HOST);
 	if (status != VX_SUCCESS)
 		ReportError("ERROR: vxMapTensorPatch: read failed (%d)\n", status);
 
@@ -494,7 +521,7 @@ int CVxParamTensor::CompareFrame(int frameNumber)
 						vx_int32 d = v1 - v2;
 						d = (d < 0) ? -d : d;
 						maxError = (d > maxError) ? d : maxError;
-						sumError += d * d;
+						sumError += (long) d * d;
 					}
 				}
 			}
@@ -525,7 +552,7 @@ int CVxParamTensor::CompareFrame(int frameNumber)
 						vx_float32 d = v1 - v2;
 						d = (d < 0) ? -d : d;
 						maxError = (d > maxError) ? d : maxError;
-						sumError += d * d;
+						sumError += (double) d * d;
 					}
 				}
 			}
@@ -560,7 +587,7 @@ int CVxParamTensor::CompareFrame(int frameNumber)
 						vx_float32 d = v1 - v2;
 						d = (d < 0) ? -d : d;
 						maxError = (d > maxError) ? d : maxError;
-						sumError += d * d;
+						sumError += (double) d * d;
 					}
 				}
 			}

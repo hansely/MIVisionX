@@ -18,7 +18,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required(VERSION 3.0)
 project(amd_nn)
 
 list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/../../amd_openvx/cmake)
@@ -52,6 +52,7 @@ list(APPEND SOURCES
     src/deconvolution_layer.cpp
     src/fully_connected_layer.cpp
     src/normalization_layer.cpp
+    src/local_response_normalization_layer.cpp
     src/pooling_layer.cpp
     src/roi_pooling_layer.cpp
     src/softmax_layer.cpp
@@ -79,6 +80,11 @@ list(APPEND SOURCES
     src/crop_and_resize_layer.cpp
     src/detection_output.cpp
     src/cast_layer.cpp
+    src/nms_layer.cpp
+    src/gather_layer.cpp
+    src/topk_layer.cpp
+    src/reduce_min.cpp
+    src/tile_layer.cpp
     src/profiler.cpp
     )
 

@@ -18,11 +18,22 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
+from __future__ import print_function
+from __future__ import division
+from __future__ import absolute_import
+from __future__ import unicode_literals
+from future import standard_library
+standard_library.install_aliases()
+from builtins import *
+from builtins import str
+from builtins import range
+from past.utils import old_div
+from builtins import object
 import sys, os, os.path
 import numpy as np
 import re
 
-class IrTensor:
+class IrTensor(object):
     def __init__(self):
         self.name = 'Unknown'
         self.type = 'F032'
@@ -49,7 +60,7 @@ class IrTensor:
         self.shape = [int(v) for v in lT[2].split(',')]
         self.format = lT[3]
 
-class IrAttr:
+class IrAttr(object):
     def __init__(self):
         self.dict_values = {
               'axis' : 0                # axis to compute
@@ -101,7 +112,13 @@ class IrAttr:
             , 'zoom_factor' : 2
             , 'to' : 1
             , 'count' : -1
+            , 'center_point_box' : 0    #nms corner coordinates default value
+            , 'max_output_boxes_per_class'  : 0
+            , 'iou_threshold' : 0.0
+            , 'score_threshold' : 0.0
             , 'value' : np.array([])
+            , 'largest' : 1
+            , 'sorted' : 1
         }
         self.dict_set = []
 
@@ -139,7 +156,7 @@ class IrAttr:
             value_type = type(self.dict_values[name]).__name__
             if value_type == 'list':
                 list_type = value.split(',')
-                self.set(name, [int(x) for x in list_type] if (list_type[0].isdigit()) else [float(x) for x in list_type])
+                self.set(name, [int(x) for x in list_type] if (list_type[0].count('.') == 0) else [float(x) for x in list_type])
             elif value_type == 'float':
                 self.set(name, float(value))
             elif value_type == 'str':
@@ -147,7 +164,7 @@ class IrAttr:
             else:
                 self.set(name, int(value))
 
-class IrNode:
+class IrNode(object):
     def __init__(self):
         self.type = 'Unknown'
         self.inputs = []
@@ -195,8 +212,13 @@ class IrNode:
             'matmul' : 1,
             'upsample' : 1,
             'cast' : 1,
+            'nms'  : 1,
             'constant' : 1,
             'constantofshape' : 1,
+            'gather' : 1,
+            'topk'  : 1,
+            'reduce_min' : 1,
+            'tile' : 1,
         }
 
     def set(self,type,inputs,outputs,attr):
@@ -223,8 +245,8 @@ class IrNode:
         if sL[4] != '':
             self.attr.fromString(sL[4])
 
-class IrGraph:
-    def __init__(self):
+class IrGraph(object):
+    def __init__(self, updatedLocals):
         self.inputs = []
         self.outputs = []
         self.output_names = []
@@ -237,6 +259,7 @@ class IrGraph:
         self.tensor_shapes = {}
         self.all_F032 = True
         self.all_F016 = False
+        self.updatedLocals = updatedLocals
 
     def addInput(self,tensor):
         self.inputs.append(tensor)
@@ -308,7 +331,6 @@ class IrGraph:
     def updateLocals(self):
         self.locals = []
         count = 0
-        constantCount = 0
         for node in self.nodes:
             for output in node.outputs:
                 count+=1
@@ -417,7 +439,16 @@ class IrGraph:
                 elif node.type in ['concat']:
                     input = self.tensor_dict[node.inputs[0]]
                     axis = node.attr.get('axis')
-                    if axis == 1:
+                    while(len(input.shape) < 4):
+                         input.shape.append(1)
+                    if axis == 0:
+                        shape = [0, input.shape[1], input.shape[2], input.shape[3]]
+                        for name in node.inputs:
+                            lshape = self.tensor_shapes[name]
+                            if shape[:0] + shape[1:] != lshape[:0] + lshape[1:]:
+                                raise ValueError("concat: mismatch detected: " + node.inputs[0] + ":" + str(shape) + " " + name + ":" + str(lshape))
+                            shape[0] = shape[0] + lshape[0]
+                    elif axis == 1:
                         shape = [input.shape[0], 0, input.shape[2], input.shape[3]]
                         for name in node.inputs:
                             lshape = self.tensor_shapes[name]
@@ -436,15 +467,43 @@ class IrGraph:
                     local.setInfo(input.type, shape)
                     local.setFormat(input.format)
                     self.addLocal(local)
+                    self.addBinary(output, bytes(shape))
                 elif node.type in ['slice']:
                     input = self.tensor_dict[node.inputs[0]]
-                    shape = [input.shape[0], input.shape[1] // len(node.outputs), input.shape[2], input.shape[3]]
-                    for name in node.outputs:
-                        local = IrTensor()
-                        local.setName(name)
-                        local.setInfo(input.type, shape)
-                        local.setFormat(input.format)
-                        self.addLocal(local)
+                    out_shape = []
+                    
+                    if node.inputs[1] not in self.tensor_dict or node.inputs[2] not in self.tensor_dict:
+                        out_shape = [8,1,1]
+                    else:
+                        starts = np.frombuffer(self.binaries[node.inputs[1]], dtype=np.int64)
+                        ends = np.frombuffer(self.binaries[node.inputs[2]], dtype=np.int64)
+                        if len(node.inputs) < 5:
+                            steps = [1,1,1,1]
+                        else:
+                            steps = np.frombuffer(self.binaries[node.inputs[4]], dtype=np.int64)
+                        
+                        for i in range(len(starts)):
+                            dim_count = 0
+                            value = starts[i]
+                            if value < 0:
+                                value += input.shape[i]
+                            value = min(value, input.shape[i])
+                            end = ends[i]
+                            if end < 0:
+                                end += input.shape[i]
+                            end = min(end, input.shape[i])
+                            
+                            while(value < end):
+                                dim_count += 1
+                                value += steps[i]
+                            out_shape.append(dim_count)
+                            
+                    #tbd: check the shape once the model is ready
+                    local = IrTensor()
+                    local.setName(output)
+                    local.setInfo(input.type, out_shape)
+                    local.setFormat(input.format)
+                    self.addLocal(local)
                 elif node.type in ['squeeze']:
                     input = self.tensor_dict[node.inputs[0]]
                     axes = node.attr.get('axes')
@@ -455,6 +514,8 @@ class IrGraph:
                                 out_shape.append(input.shape[i])
                     else:
                         out_shape = [input.shape[i] for i in range(len(input.shape)) if i not in axes]
+                    while len(out_shape) < 4:
+                        out_shape.append(1)
                     node.attr.set('shape', out_shape)
                     node.type = 'reshape'
                     local = IrTensor()
@@ -469,6 +530,8 @@ class IrGraph:
                     if len(out_shape) < 4:
                         for i in range(len(axes)):
                             out_shape.insert(axes[i], 1)
+                    while(len(out_shape) < 4):
+                        out_shape.append(1)
                     node.attr.set('shape', out_shape)
                     node.type = 'reshape'
                     local = IrTensor()
@@ -486,6 +549,8 @@ class IrGraph:
                         npType = np.float32
                     elif self.tensor_types[node.inputs[1]] == 'F016':
                         npType = np.float16
+                    elif self.tensor_types[node.inputs[1]] == 'I064':
+                        npType = np.int64        
                     elif self.tensor_types[node.inputs[1]] == 'I032':
                         npType = np.int32    
                     elif self.tensor_types[node.inputs[1]] == 'I016':
@@ -510,11 +575,13 @@ class IrGraph:
                     param = node.attr.get('shape')
                     if not param:
                         if self.tensor_dict[node.inputs[1]] in self.locals:
-                            param = (self.readBinary(tensor_name)).tolist()
+                            tensor_name = node.inputs[1]
+                            param = (self.readBinary(tensor_name))
                         else:
                             param = self.tensor_dict[node.inputs[1]].shape
+                            self.removeTensor(node.inputs[1])
+                        param = param if isinstance(param,list) else list(param)
                         node.attr.set('shape', param)
-                        self.removeTensor(node.inputs[1])
                     axis_start = node.attr.get('axis')
                     axis_count = node.attr.get('count')
                     if axis_count == -1:
@@ -536,8 +603,8 @@ class IrGraph:
                         if param[dim] == -1:
                             out_shape[dim+axis_start] = (int)(icount // ocount)
                             ocount *= out_shape[dim+axis_start]
-                    if icount != ocount:
-                        raise ValueError("reshape: mismatch detected: " + node.inputs[0] + ":" + str(input.shape) + " " + node.outputs[0] + ":" + str(param))
+                    # if icount != ocount:
+                    #     raise ValueError("reshape: mismatch detected: " + node.inputs[0] + ":" + str(input.shape) + " " + node.outputs[0] + ":" + str(param))
                     local = IrTensor()
                     local.setName(output)
                     local.setInfo(input.type, out_shape)
@@ -556,32 +623,50 @@ class IrGraph:
                     self.addVariable(shape_tensor)                    
                     self.addBinary(tensor_name, shape_data)
                     node.inputs[0] = tensor_name
+                    
+                    tensor_shape = shape_tensor.shape
+                    while len(tensor_shape) < 4:
+                        tensor_shape.append(1)
+                    
                     local = IrTensor()
                     local.setName(output)
                     local.setInfo('I064', shape_tensor.shape)
                     local.setFormat(input.format)
-                    self.addLocal(local)
+                    self.addVariable(local)
+                    self.addBinary(output, shape_data)
                 elif node.type in ['constant']:
-                    constantCount+=1
-                    tensor_name = 'constant_' + str(constantCount)
                     value = node.attr.get('value')
                     value = np.atleast_1d(value)
                     valueType = value.dtype
-                    tensorType = 'F032'
-                    if valueType == 'int64':
+                    if valueType == 'float64':
+                        tensorType = 'F064'
+                    elif valueType == 'float32':
+                        tensorType = 'F032'
+                    elif valueType == 'float16':
+                        tensorType = 'F016'
+                    elif valueType == 'int64':
                         tensorType = 'I064'
-                    
+                    elif valueType == 'int32':
+                        tensorType = 'I032'
+                    elif valueType == 'int16':
+                        tensorType = 'I016'
+                    elif valueType == 'uint16':
+                        tensorType = 'U016'
+                    elif valueType == 'uint8':
+                        tensorType = 'U008'
+                    else:
+                        raise ValueError("constant: Tensor type not supported: " + tensorType)
                     shape = list(value.shape)
                     if len(shape) == 0:
                         shape.append(1)
                     constant_tensor = IrTensor()
-                    constant_tensor.setName(tensor_name)
+                    constant_tensor.setName(output)
                     constant_tensor.setInfo(tensorType, shape)
-                    self.addVariable(constant_tensor)                    
-                    self.addBinary(tensor_name, value)
+                    self.addVariable(constant_tensor)
+                    self.addBinary(output, value)
                     
                     node.type = 'copy'
-                    node.inputs.append(tensor_name)
+                    node.inputs.append(output)
                     local = IrTensor()
                     local.setName(output)
                     local.setInfo(tensorType, shape)
@@ -632,6 +717,9 @@ class IrGraph:
                     elif axes == [0, 3, 1, 2]:
                         format = 'NCHW'
                         shape = [input.shape[0], input.shape[3], input.shape[1], input.shape[2]]
+                    elif axes == [0, 2, 1]:
+                        format = 'NCHW'
+                        shape = [input.shape[0], input.shape[2], input.shape[1], input.shape[3]]
                     else:
                         raise ValueError("transpose: unsupported transpose: " + input.toString() + " " + str(axes))
                     local = IrTensor()
@@ -663,6 +751,9 @@ class IrGraph:
                     elif input.format == 'NHWC' and order == [0, 3, 1, 2]:
                         format = 'NCHW'
                         shape = [input.shape[0], input.shape[3], input.shape[1], input.shape[2]]
+                    elif axes == [0, 2, 1]:
+                        format = 'NCHW'
+                        shape = [input.shape[0], input.shape[2], input.shape[1], input.shape[3]]
                     else:
                         raise ValueError("permute: unsupported permute: " + input.toString() + " " + str(axes))
                     local = IrTensor()
@@ -756,6 +847,14 @@ class IrGraph:
                     local.setInfo(output_type, output_shape)
                     local.setFormat(input.format)
                     self.addLocal(local)
+                elif node.type in ['nms']:
+                    output_type = 'I064'
+                    output_shape = [1,1,1,3]
+                    local = IrTensor()
+                    local.setName(output)
+                    local.setInfo(output_type, output_shape)
+                    local.setFormat(input.format)
+                    self.addLocal(local)
                 elif node.type in ['detection_output']:
                     input = self.tensor_dict[node.inputs[0]]
                     out_shape = [1,1,1,7]
@@ -763,6 +862,83 @@ class IrGraph:
                     local.setName(output)
                     local.setInfo(input.type, out_shape)
                     local.setFormat(input.format)
+                elif node.type in ['gather']:
+                    input = self.tensor_dict[node.inputs[0]]
+                    indices = self.tensor_dict[node.inputs[1]]
+                    axis = node.attr.get('axis')
+                    
+                    Ni, Nk = input.shape[:axis], input.shape[axis+1:]
+                    Nj = indices.shape
+                    out_shape = Nk + Nj + Ni
+                    
+                    while len(out_shape) < (len(input.shape) + len(indices.shape) -1):
+                        out_shape.append(1)
+                    
+                    # tbd: verify the out_shape when the model is ready
+                    local = IrTensor()
+                    local.setName(output)
+                    local.setInfo(input.type, out_shape)
+                    local.setFormat(input.format)
+                    self.addLocal(local)
+                elif node.type in ['topk']:
+                    input = self.tensor_dict[node.inputs[0]]
+                    k = self.tensor_dict[node.inputs[1]]
+                    out_shape = [1,1,input.shape[1], k.shape[0]] #needs to be corrected to get real value if k.
+                    local_values = IrTensor()
+                    local_values.setName(output)
+                    local_values.setInfo(input.type, out_shape)
+                    local_values.setFormat(input.format)
+                    self.addLocal(local_values)
+
+                    local_indices = IrTensor()
+                    local_indices.setName(output)
+                    local_indices.setInfo('I064', out_shape)
+                    local_indices.setFormat(input.format)
+                    self.addLocal(local_indices)
+                elif node.type in ['reduce_min']:
+                    input = self.tensor_dict[node.inputs[0]]
+                    axes = node.attr.get('axes')
+                    keepdims = node.attr.get('keepdims')
+                    output_shape = []
+                    if keepdims == 1:
+                        if axes is None:
+                            for i in range(len(input.shape)):
+                                output_shape.append(1)
+                        else:
+                            for i in range(len(input.shape)):
+                                shape = 1 if i in axes else input.shape[i]
+                                output_shape.append(shape)
+                    elif keepdims == 0:
+                        if axes is None:
+                            output_shape.append(1)
+                        else:
+                            for i in range(len(input.shape)):
+                                if i not in axes:
+                                    output_shape.append(input.shape[i])
+                    local = IrTensor()
+                    local.setName(output)
+                    local.setInfo(input.type, output_shape)
+                    local.setFormat(input.format)
+                    self.addLocal(local)
+                elif node.type in ['tile']:
+                    input = self.tensor_dict[node.inputs[0]]
+                    if node.inputs[1] not in self.binaries:
+                        raise ValueError("tile: tile by local tensor is unsupported: " + node.inputs[1])
+
+                    repeats = np.frombuffer(self.binaries[node.inputs[1]], dtype=npType)
+
+                    repeats = np.flip(repeats)
+                    while len(repeats) < 4:
+                        repeats.add(1)
+                        
+                    for i in range(len(input.shape)):
+                        output_shape = input.shape[i] * repeats[i]
+
+                    local = IrTensor()
+                    local.setName(output)
+                    local.setInfo(input.type, output_shape)
+                    local.setFormat(input.format)
+                    self.addLocal(local)
                 else:
                     raise ValueError("Unsupported IR node type: {}".format(node.type))
 
@@ -824,9 +1000,10 @@ class IrGraph:
             for idx, binary in enumerate(self.binaries):
                 if binary not in keepAsFP32:
                     weight = np.frombuffer(self.binaries[binary], dtype=np.float32)
-                    self.addBinary(binary, np.getbuffer(weight.astype(np.float16)))
+                    newBinary = weight.astype(dtype=np.float16)
+                    self.addBinary(binary, newBinary)
 
-                #print("Add binary %s of size %d at Idx: %d len: %d" %(binary, len(self.binaries[binary]), idx, len(self.binaries)))
+                    #print("Add binary %s of size %d at Idx: %d len: %d" %(binary, newBinary.nbytes, idx, len(newBinary)))
             self.all_F032 = False
             self.all_F016 = True    
         else:
@@ -883,10 +1060,12 @@ class IrGraph:
         for idx, binary in enumerate(self.binaries):
             if binary in convertFromFP64:
                 weight = np.frombuffer(self.binaries[binary], dtype=np.float64)
-                self.addBinary(binary, np.getbuffer(weight.astype(np.float32)))
+                newBinary = weight.astype(dtype=np.float32)
+                self.addBinary(binary, newBinary)
             elif binary in convertFromINT32:
                 weight = np.frombuffer(self.binaries[binary], dtype=np.int32)
-                self.addBinary(binary, np.getbuffer(weight.astype(np.float32)))
+                newBinary = weight.astype(dtype=np.float32)
+                self.addBinary(binary, newBinary)
         self.all_F032 = True
         self.all_F016 = False
 
@@ -921,11 +1100,11 @@ class IrGraph:
                     #print "DEBUG: scale_name = " + scale_name + "\n"
 
                     epsilon = node.attr.get('epsilon')
-                    scale = scale / np.sqrt(variance + epsilon)
+                    scale = old_div(scale, np.sqrt(variance + epsilon))
                     offset = offset - mean * scale
                     node.type = 'muladd'
-                    self.addBinary(node.inputs[1], np.getbuffer(scale))
-                    self.addBinary(node.inputs[2], np.getbuffer(offset))
+                    self.addBinary(node.inputs[1], scale.view())
+                    self.addBinary(node.inputs[2], offset.view())
                     node.inputs = node.inputs[:3]
                     node.attr = IrAttr()
                 # run through fuse rules
@@ -974,14 +1153,14 @@ class IrGraph:
                         else:
                             tensor.setInfo('F016', [1, K])
                         self.addVariable(tensor)
-                        self.addBinary(tensor.name, np.getbuffer(bias))
+                        self.addBinary(tensor.name, bias.view())
                         node.inputs.append(tensor.name)
                     else:
                         bias = np.frombuffer(self.binaries[node.inputs[2]], dtype=npType)
                     bias = bias + offset * np.sum(np.split(weight, K),axis=1)
                     weight = weight * np.repeat(scale, N)
-                    self.addBinary(node.inputs[1], np.getbuffer(weight))
-                    self.addBinary(node.inputs[2], np.getbuffer(bias))
+                    self.addBinary(node.inputs[1], weight.view())
+                    self.addBinary(node.inputs[2], bias.view())
                     node.inputs[0] = prevNode.inputs[0]
                     nodesToRemove.append(prevNode)
                     prevNode = node
@@ -1013,14 +1192,14 @@ class IrGraph:
                         else:
                             tensor.setInfo('F016', [1, K])
                         self.addVariable(tensor)
-                        self.addBinary(tensor.name, np.getbuffer(bias))
+                        self.addBinary(tensor.name, bias.view())
                         prevNode.inputs.append(tensor.name)
                     else:
                         bias = np.frombuffer(self.binaries[prevNode.inputs[2]], dtype=npType)
                     bias = bias * scale + offset
                     weight = weight * np.repeat(scale, N)
-                    self.addBinary(prevNode.inputs[1], np.getbuffer(weight))
-                    self.addBinary(prevNode.inputs[2], np.getbuffer(bias))
+                    self.addBinary(prevNode.inputs[1], weight.view())
+                    self.addBinary(prevNode.inputs[2], bias.view())
                     if prevSkipNode != None:
                         prevSkipNode.outputs[0] = node.outputs[0]
                     else:
@@ -1054,7 +1233,7 @@ class IrGraph:
                     ck = np.frombuffer(self.binaries[prevNode.inputs[1]], dtype=npType)
                     offset = np.frombuffer(self.binaries[node.inputs[1]], dtype=npType)
                     offset = offset + ck
-                    self.addBinary(node.inputs[1], np.getbuffer(offset))
+                    self.addBinary(node.inputs[1], offset.view())
                     node.inputs[0] = prevNode.inputs[0]
                     nodesToRemove.append(prevNode)
                     prevNode = node
@@ -1066,7 +1245,7 @@ class IrGraph:
                     offset = np.frombuffer(self.binaries[prevNode.inputs[1]], dtype=npType)
                     scale = np.frombuffer(self.binaries[node.inputs[1]], dtype=npType)
                     offset = scale * offset
-                    self.addBinary(prevNode.inputs[1], np.getbuffer(offset))
+                    self.addBinary(prevNode.inputs[1], offset.view())
                     node.type = 'muladd'
                     node.inputs.append(prevNode.inputs[1])
                     node.inputs[0] = prevNode.inputs[0]
@@ -1090,7 +1269,7 @@ class IrGraph:
                     mk = np.frombuffer(self.binaries[prevNode.inputs[1]], dtype=npType)
                     scale = np.frombuffer(self.binaries[node.inputs[1]], dtype=npType)
                     scale = scale * mk
-                    self.addBinary(node.inputs[1], np.getbuffer(scale))
+                    self.addBinary(node.inputs[1], scale.view())
                     node.inputs[0] = prevNode.inputs[0]
                     nodesToRemove.append(prevNode)
                     prevNode = node
@@ -1103,7 +1282,7 @@ class IrGraph:
                     scale = np.frombuffer(self.binaries[node.inputs[1]], dtype=npType)
                     offset = np.frombuffer(self.binaries[node.inputs[2]], dtype=npType)
                     offset = offset + scale * ck
-                    self.addBinary(node.inputs[2], np.getbuffer(offset))
+                    self.addBinary(node.inputs[2], offset.view())
                     node.inputs[0] = prevNode.inputs[0]
                     nodesToRemove.append(prevNode)
                     prevNode = node
@@ -1115,7 +1294,7 @@ class IrGraph:
                     mk = np.frombuffer(self.binaries[prevNode.inputs[1]], dtype=npType)
                     scale = np.frombuffer(self.binaries[node.inputs[1]], dtype=npType)
                     scale = scale * mk
-                    self.addBinary(node.inputs[1], np.getbuffer(scale))
+                    self.addBinary(node.inputs[1], scale.view())
                     node.inputs[0] = prevNode.inputs[0]
                     nodesToRemove.append(prevNode)
                     prevNode = node
@@ -1127,7 +1306,7 @@ class IrGraph:
                     ck = np.frombuffer(self.binaries[prevNode.inputs[2]], dtype=npType)
                     offset = np.frombuffer(self.binaries[node.inputs[1]], dtype=npType)
                     offset = offset + ck
-                    self.addBinary(prevNode.inputs[2], np.getbuffer(offset))
+                    self.addBinary(prevNode.inputs[2], offset.view())
                     prevNode.outputs[0] = node.outputs[0]
                     prevOutput = node.outputs[0]
                     nodesToRemove.append(node)
@@ -1139,8 +1318,8 @@ class IrGraph:
                     scale = np.frombuffer(self.binaries[node.inputs[1]], dtype=npType)
                     offset = scale * ck
                     scale = scale * mk
-                    self.addBinary(prevNode.inputs[1], np.getbuffer(scale))
-                    self.addBinary(prevNode.inputs[2], np.getbuffer(offset))
+                    self.addBinary(prevNode.inputs[1], scale.view())
+                    self.addBinary(prevNode.inputs[2], offset.view())
                     prevNode.outputs[0] = node.outputs[0]
                     prevOutput = node.outputs[0]
                     nodesToRemove.append(node)
@@ -1153,8 +1332,8 @@ class IrGraph:
                     offset = np.frombuffer(self.binaries[node.inputs[2]], dtype=npType)
                     offset = offset + scale * ck
                     scale = scale * mk
-                    self.addBinary(node.inputs[1], np.getbuffer(scale))
-                    self.addBinary(node.inputs[2], np.getbuffer(offset))
+                    self.addBinary(node.inputs[1], scale.view())
+                    self.addBinary(node.inputs[2], offset.view())
                     node.inputs[0] = prevNode.inputs[0]
                     nodesToRemove.append(prevNode)
                     prevNode = node
@@ -1223,7 +1402,7 @@ class IrGraph:
                     jweights.append(weightName)
                     # slice weights binary and add them to dict
                     jweightBinary = weightBinary[jgrp*K:jgrp*K+K,:,:,:].copy()
-                    self.addBinary(weightName, np.getbuffer(jweightBinary))
+                    self.addBinary(weightName, jweightBinary.view())
                     if bias is not None:
                         biasName = '%s__grp_%d' % (bias.name, jgrp)
                         local = IrTensor()
@@ -1233,11 +1412,11 @@ class IrGraph:
                         jbiases.append(biasName)
                         # slice bias binary and add them to dict
                         jbiasBinary = biasBinary[:,jgrp*K:jgrp*K+K].copy()
-                        self.addBinary(biasName, np.getbuffer(jbiasBinary))
+                        self.addBinary(biasName, jbiasBinary.view())
                 self.removeTensor(weight.name)
                 if bias is not None:
                     self.removeTensor(bias.name)
-                for jgrp in reversed(range(groups)):
+                for jgrp in reversed(list(range(groups))):
                     jnode = IrNode()
                     jnode.set('conv', [jinputs[jgrp], jweights[jgrp]] if bias is None else \
                         [jinputs[jgrp], jweights[jgrp], jbiases[jgrp]], [joutputs[jgrp]], node.attr)
@@ -1277,7 +1456,10 @@ class IrGraph:
         for binary in self.binaries:
             binaryFile = binaryFolder + '/' + binary + '.raw'
             with open(binaryFile, 'wb') as f:
-                f.write(self.binaries[binary])
+                if isinstance(self.binaries[binary], np.ndarray):
+                    (self.binaries[binary]).tofile(binaryFile)
+                else:
+                    f.write(self.binaries[binary])
         name_dict = {}
         with open(irDescFile, 'r') as f_read: 
             for line in f_read:
@@ -1369,5 +1551,6 @@ class IrGraph:
             binaryFile = binaryFolder + '/' + tensor.name + '.raw'
             with open(binaryFile, 'rb') as f:
                 self.binaries[tensor.name] = f.read()
-        self.updateLocals()
-        self.removeUnusedTensors()
+        if self.updatedLocals == False:
+            self.updateLocals()
+            self.removeUnusedTensors()

@@ -18,6 +18,15 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
+from __future__ import print_function
+from __future__ import division
+from __future__ import absolute_import
+from __future__ import unicode_literals
+from future import standard_library
+standard_library.install_aliases()
+from builtins import *
+from builtins import range
+from past.utils import old_div
 import os, sys
 import onnx
 from onnx import onnx_pb
@@ -47,7 +56,10 @@ onnx2ir_attr = {
     'min' : 'min',
     'max' : 'max',
     'to' : 'to', 
-    'value' : 'value'
+    'center_point_box' : 'center_point_box',
+    'value' : 'value',
+    'largest' : 'largest',
+    'sorted' : 'sorted',
 }
 
 onnx2ir_op_type = { 
@@ -85,8 +97,14 @@ onnx2ir_op_type = {
     'Cast'               : 'cast',
     'Shape'              : 'shape',  
     'ArgMax'             : 'argmax',
+    'NonMaxSuppression'  : 'nms',
     'Constant'           : 'constant',
-    'ConstantOfShape'    : 'constantofshape',
+    'Gather'             : 'gather',
+    'TopK'               : 'topk',
+    'Slice'              : 'slice',
+    'ReduceMin'          : 'reduce_min',
+    'Tile'               : 'tile',
+    'ConstantOfShape' : 'copy'
 }
 
 onnx2ir_data_type = [
@@ -95,7 +113,7 @@ onnx2ir_data_type = [
 ]
 
 def onnx_name_to_ir_name(name):
-    return '_'.join(('_'.join(('_'.join(name.split('/')).split('-')))).split(':'))
+    return '_'.join('_'.join(('_'.join(('_'.join(name.split('/')).split('-')))).split(':')).split('.'))
 
 def onnx_node_to_ir_attr(node):
     global onnx2ir_attr
@@ -126,7 +144,7 @@ def onnx_node_to_ir_attr(node):
            ((output_padding[0] % (kernel_shape[0] - 1)) != 0) or \
            ((output_padding[1] % (kernel_shape[1] - 1)) != 0):
             raise ValueError("Unsupported ONNX value for output_padding attribute")
-        dilations = [output_padding[0] / (kernel_shape[0] - 1) + 1, output_padding[1] / (kernel_shape[1] - 1) + 1]
+        dilations = [old_div(output_padding[0], (kernel_shape[0] - 1)) + 1, old_div(output_padding[1], (kernel_shape[1] - 1)) + 1]
         attr.set('dilations', dilations)       
     if node.op_type == 'MatMul':
         attr.set('beta', 0.0)
@@ -140,6 +158,9 @@ def onnx_node_to_ir_node(onnx_node):
     else:
         print('ERROR: ONNX operation "%s" not supported yet' % (onnx_node.op_type))
         sys.exit(1)
+    # if(onnx_node.op_type == 'Constant'):
+    #     print(onnx_node)
+        # print(onnx_node.input[1])
     node.set(type, [onnx_name_to_ir_name(name) for name in onnx_node.input], \
                    [onnx_name_to_ir_name(name) for name in onnx_node.output], \
                    onnx_node_to_ir_attr(onnx_node))
@@ -158,11 +179,10 @@ def onnx_value_info_to_data(info, dims):
     return tensor
 
 def onnx_graph_to_ir_graph(onnx_graph):
-    graph = IrGraph()
+    graph = IrGraph(False)
     initializerList = []
     shapeList = []
     inputUser = False
-                
     for onnx_node in onnx_graph.node:
         for tensor in onnx_graph.initializer:
             if onnx_node.op_type == 'Reshape' and len(onnx_node.input) == 2 and tensor.name == onnx_node.input[1]:

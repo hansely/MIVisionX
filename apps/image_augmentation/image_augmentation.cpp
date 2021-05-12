@@ -44,7 +44,7 @@ int main(int argc, const char ** argv)
     // check command-line usage
     const int MIN_ARG_COUNT = 2;
     if(argc < MIN_ARG_COUNT) {
-        printf( "Usage: image_augmentation <image_dataset_folder/video_file> <processing_device=1/cpu=0>  decode_width decode_height video_mode gray_scale/rgb display_on_off decode_shard_count  <shuffle:0/1> \n" );
+        printf( "Usage: image_augmentation <image_dataset_folder/video_file> <processing_device=1/cpu=0>  decode_width decode_height video_mode gray_scale/rgb display_on_off decode_shard_count  <shuffle:0/1> <jpeg_dec_mode<0(tjpeg)/1(opencv)>\n" );
         return -1;
     }
     int argIdx = 0;
@@ -58,6 +58,7 @@ int main(int argc, const char ** argv)
     bool processing_device = 1;
     size_t shard_count = 2;
     int shuffle = 0;
+    int dec_mode = 0;
 
     if(argc >= argIdx+MIN_ARG_COUNT)
         processing_device = atoi(argv[++argIdx]);
@@ -83,6 +84,8 @@ int main(int argc, const char ** argv)
     if(argc >= argIdx+MIN_ARG_COUNT)
         shuffle = atoi(argv[++argIdx]);
 
+    if(argc >= argIdx+MIN_ARG_COUNT)
+        dec_mode = atoi(argv[++argIdx]);
 
     int inputBatchSize = 2;
 
@@ -94,13 +97,13 @@ int main(int argc, const char ** argv)
 
     if(raliGetStatus(handle) != RALI_OK)
     {
-        std::cout << "Could not create the Rali contex\n";
+        std::cout << "Could not create the rocAL contex\n";
         return -1;
     }
 
+    RaliDecoderType dec_type = (dec_mode==0)? RaliDecoderType::RALI_DECODER_TJPEG : RaliDecoderType::RALI_DECODER_OPENCV;
 
-
-    /*>>>>>>>>>>>>>>>> Creating Rali parameters  <<<<<<<<<<<<<<<<*/
+    /*>>>>>>>>>>>>>>>> Creating rocAL parameters  <<<<<<<<<<<<<<<<*/
 
     // Creating uniformly distributed random objects to override some of the default augmentation parameters
     RaliFloatParam rand_crop_area = raliCreateFloatUniformRand( 0.3, 0.5 );
@@ -130,12 +133,13 @@ int main(int argc, const char ** argv)
     }
     else
     {
-	 // The jpeg file loader can automatically select the best size to decode all images to that size
+	    // The jpeg file loader can automatically select the best size to decode all images to that size
          // User can alternatively set the size or change the policy that is used to automatically find the size
+         if (dec_type == RaliDecoderType::RALI_DECODER_OPENCV) std::cout << "Using OpenCV decoder for Jpeg Source\n";
          if(decode_height <= 0 || decode_width <= 0)
              input1 = raliJpegFileSource(handle, folderPath1,  color_format, shard_count, false, shuffle, false);
         else
-             input1 = raliJpegFileSource(handle, folderPath1,  color_format, shard_count, false, shuffle, false,  RALI_USE_USER_GIVEN_SIZE, decode_width, decode_height);
+             input1 = raliJpegFileSource(handle, folderPath1,  color_format, shard_count, false, shuffle, false,  RALI_USE_USER_GIVEN_SIZE, decode_width, decode_height, dec_type);
 
     }
 
@@ -215,8 +219,8 @@ int main(int argc, const char ** argv)
     cv::Mat mat_input(h, w, cv_color_format);
     cv::Mat mat_color;
     int col_counter = 0;
-    cv::namedWindow( "output", CV_WINDOW_AUTOSIZE );
-    printf("Going to process images\n");
+    if (display)
+        cv::namedWindow( "output", CV_WINDOW_AUTOSIZE );
 
     high_resolution_clock::time_point t1 = high_resolution_clock::now();
     int counter = 0;

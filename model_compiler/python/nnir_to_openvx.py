@@ -18,6 +18,15 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
+from __future__ import print_function
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
+from future import standard_library
+standard_library.install_aliases()
+from builtins import *
+from builtins import str
+from builtins import range
 import os, sys, struct
 import datetime, pytz
 from nnir import *
@@ -99,28 +108,37 @@ def generateCMakeFiles(graph,outputFolder):
         generateLicenseForScript(f)
         f.write( \
 """
-cmake_minimum_required (VERSION 2.8)
+cmake_minimum_required (VERSION 3.0)
+
 project (annmodule)
-set (CMAKE_CXX_STANDARD 11)
+
+set(CMAKE_CXX_STANDARD 11)
+
 list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
+
 find_package(OpenCL REQUIRED)
 find_package(OpenCV QUIET)
-include_directories (${OpenCL_INCLUDE_DIRS} ${OpenCL_INCLUDE_DIRS}/Headers )
-include_directories (/opt/rocm/mivisionx/include)
-link_directories    (/opt/rocm/mivisionx/lib)
+
+include_directories(${OpenCL_INCLUDE_DIRS} ${OpenCL_INCLUDE_DIRS}/Headers )
+include_directories(/opt/rocm/mivisionx/include)
+
+link_directories(/opt/rocm/mivisionx/lib)
+
 list(APPEND SOURCES annmodule.cpp)
 add_library(${PROJECT_NAME} SHARED ${SOURCES})
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse4.2 -mf16c -std=c++11")
+
 target_link_libraries(${PROJECT_NAME} openvx vx_nn pthread)
 
 add_executable(anntest anntest.cpp)
-if (OpenCV_FOUND)
+if(OpenCV_FOUND)
   target_compile_definitions(anntest PUBLIC ENABLE_OPENCV=1)
   include_directories(${OpenCV_INCLUDE_DIRS})
   target_link_libraries(anntest ${OpenCV_LIBRARIES})
 else(OpenCV_FOUND)
   target_compile_definitions(anntest PUBLIC ENABLE_OPENCV=0)
 endif(OpenCV_FOUND)
+
 target_link_libraries(anntest openvx vx_nn pthread ${PROJECT_NAME})
 
 add_library(annpython SHARED annpython.cpp)
@@ -147,7 +165,6 @@ find_path(OPENCL_INCLUDE_DIRS
     DOC "OpenCL header file path"
     )
 mark_as_advanced( OPENCL_INCLUDE_DIRS )
-
 if("${CMAKE_SIZEOF_VOID_P}" EQUAL "8")
     find_library( OPENCL_LIBRARIES
         NAMES OpenCL
@@ -168,22 +185,30 @@ else( )
         $ENV{AMDAPPSDKROOT}/lib
         DOC "OpenCL dynamic library path"
         PATH_SUFFIXES x86 Win32
-
         PATHS
         /usr/lib
         )
 endif( )
 mark_as_advanced( OPENCL_LIBRARIES )
-
 include( FindPackageHandleStandardArgs )
-find_package_handle_standard_args( OPENCL DEFAULT_MSG OPENCL_LIBRARIES OPENCL_INCLUDE_DIRS )
-
+find_package_handle_standard_args( OpenCL DEFAULT_MSG OPENCL_LIBRARIES OPENCL_INCLUDE_DIRS )
 set(OpenCL_FOUND ${OPENCL_FOUND} CACHE INTERNAL "")
 set(OpenCL_LIBRARIES ${OPENCL_LIBRARIES} CACHE INTERNAL "")
 set(OpenCL_INCLUDE_DIRS ${OPENCL_INCLUDE_DIRS} CACHE INTERNAL "")
 
+if(EXISTS "/opt/rocm/opencl/lib/libOpenCL.so")
+    if(NOT "${OPENCL_LIBRARIES}" STREQUAL "/opt/rocm/opencl/lib/libOpenCL.so")
+        message("-- ROCm OpenCL Found - Force OpenCL_LIBRARIES & OpenCL_INCLUDE_DIRS to use ROCm OpenCL")
+        set(OpenCL_LIBRARIES /opt/rocm/opencl/lib/libOpenCL.so CACHE INTERNAL "")
+        set(OpenCL_INCLUDE_DIRS /opt/rocm/opencl/include CACHE INTERNAL "")
+    endif()
+    set(CL_TARGET_OPENCL_VERSION 220 CACHE INTERNAL "")
+    add_definitions(-DCL_TARGET_OPENCL_VERSION=${CL_TARGET_OPENCL_VERSION})
+    message("-- ROCm OpenCL Found - Setting CL_TARGET_OPENCL_VERSION=${CL_TARGET_OPENCL_VERSION}")
+endif()
+
 if( NOT OPENCL_FOUND )
-    message( STATUS "FindOpenCL looked for libraries named: OpenCL" )
+    message( "-- FindOpenCL failed to find: OpenCL" )
 endif()
 """)
 
@@ -235,6 +260,7 @@ def generateModuleCPP(graph,fileName,virtual_tensor_flag):
 """
 #include "annmodule.h"
 #include <VX/vx_khr_nn.h>
+#include <VX/vx_compatibility.h>
 #include <vx_amd_nn.h>
 #include <vx_ext_amd.h>
 #include <stdio.h>
@@ -264,16 +290,16 @@ static vx_status initializeTensor(vx_context context, vx_tensor tensor, FILE * f
     vx_uint32 h[2] = { 0 };
     fread(h, 1, sizeof(h), fp);
     if(h[0] != 0xf00dd1e1 || (vx_size)h[1] != (count*itemsize)) {
-      vxAddLogEntry((vx_reference)tensor, VX_FAILURE, "ERROR: invalid data (magic,size)=(0x%%x,%%d) in %%s at byte position %%d -- expected size is %%ld\\n", h[0], h[1], binaryFilename, ftell(fp)-sizeof(h), count*itemsize);
+      vxAddLogEntry((vx_reference)tensor, VX_FAILURE, "ERROR: invalid data (magic,size)=(0x%x,%d) in %%s at byte position %d -- expected size is %ld\\n", h[0], h[1], binaryFilename, ftell(fp)-sizeof(h), count*itemsize);
       return VX_FAILURE;
     }
 
     vx_map_id map_id;
     void * ptr;
-    ERROR_CHECK_STATUS(vxMapTensorPatch(tensor, num_of_dims, nullptr, nullptr, &map_id, stride, (void **)&ptr, VX_WRITE_ONLY, VX_MEMORY_TYPE_HOST, 0));
+    ERROR_CHECK_STATUS(vxMapTensorPatch(tensor, num_of_dims, nullptr, nullptr, &map_id, stride, (void **)&ptr, VX_WRITE_ONLY, VX_MEMORY_TYPE_HOST));
     vx_size n = fread(ptr, itemsize, count, fp);
     if(n != count) {
-        vxAddLogEntry((vx_reference)tensor, VX_FAILURE, "ERROR: expected char[%%ld], but got char[%%ld] in %%s\\n", count*itemsize, n*itemsize, binaryFilename);
+        vxAddLogEntry((vx_reference)tensor, VX_FAILURE, "ERROR: expected char[%ld], but got char[%ld] in %s\\n", count*itemsize, n*itemsize, binaryFilename);
         return VX_FAILURE;
     }
     ERROR_CHECK_STATUS(vxUnmapTensorPatch(tensor, map_id));
@@ -717,12 +743,13 @@ static vx_status initializeTensor(vx_context context, vx_tensor tensor, FILE * f
             elif node.type == 'slice':
                 f.write( \
 """
-    { vx_node node = vxSliceLayer(graph, %s, %s, %s);
+    { 
+      vx_node node = vxSliceLayer(graph, %s, %s, %s, %s, %s, %s);
       ERROR_CHECK_OBJECT(node);
       ERROR_CHECK_STATUS(vxReleaseNode(&node));
-    }
-""" % (node.inputs[0], ', '.join([name for name in node.outputs]), \
-       ', '.join(['NULL' for i in range(8 - len(node.outputs))])))
+    }    
+""" 
+    % (node.inputs[0], node.outputs[0], node.inputs[1], node.inputs[2], node.inputs[3] if len(node.inputs) == 4 else 'NULL', node.inputs[4] if len(node.inputs) == 5 else 'NULL'))
             elif node.type == 'concat':
                 f.write( \
 """
@@ -886,6 +913,25 @@ static vx_status initializeTensor(vx_context context, vx_tensor tensor, FILE * f
     }    
 """  
     % (node.inputs[0], node.outputs[0]))
+            elif node.type == 'topk':
+                f.write( \
+"""
+    { 
+      vx_node node = vxTopkLayer(graph, %s, %s, %d, %d, %d, %s, %s);
+      ERROR_CHECK_OBJECT(node);
+      ERROR_CHECK_STATUS(vxReleaseNode(&node));
+    }    
+"""  
+    % (node.inputs[0], node.inputs[1], node.attr.get('axis'), node.attr.get('largest'), node.attr.get('sorted'), node.outputs[0], node.outputs[1]))
+            elif node.type == 'nms':
+                f.write( \
+"""
+    { 
+      vx_node node = vxNMSLayer(graph, %s, %s, %d, %s, %s, %s, %s);
+      ERROR_CHECK_OBJECT(node);     
+        
+"""
+    % (node.inputs[0], node.inputs[1], node.attr.get('center_point_box'), node.outputs[0], node.inputs[2], node.inputs[3], node.inputs[4]))
             elif node.type == 'detection_output':
                 f.write( \
 """
@@ -923,6 +969,86 @@ static vx_status initializeTensor(vx_context context, vx_tensor tensor, FILE * f
 """      ERROR_CHECK_STATUS(vxReleaseNode(&node));
     }
 """)
+            elif node.type == 'gather':
+                f.write( \
+"""
+    { 
+      vx_int32 axis = %d;
+      vx_scalar s_axis = vxCreateScalarWithSize(context, VX_TYPE_INT32, &axis, sizeof(axis));      
+      vx_node node = vxGatherLayer(graph, %s, %s, %s, s_axis);
+      ERROR_CHECK_OBJECT(node);
+      ERROR_CHECK_STATUS(vxReleaseNode(&node));
+    }    
+""" 
+    % (node.attr.get('axis'), node.inputs[0], node.inputs[1], node.outputs[0]))
+            elif node.type == 'tile':
+                f.write( \
+"""
+    { 
+      vx_node node = vxTileLayer(graph, %s, %s, %s);
+      ERROR_CHECK_OBJECT(node);
+      ERROR_CHECK_STATUS(vxReleaseNode(&node));
+    }    
+""" 
+    % (node.inputs[0], node.inputs[1], node.outputs[0]))
+            elif node.type == 'reduce_min':
+                axes = node.attr.get('axes')
+                axes_len = -1
+                if axes is None:
+                    axes = 4 #since cpp doesn't recognize None. And axes values can range between [-4,3]
+                    axes_len = 0
+                else:
+                    axes_len = len(axes)
+                if axes_len == 0:
+                    f.write(\
+"""
+    {
+      vx_node node = vxReduceMinLayer(graph, %s, %d, %d, %s);
+      ERROR_CHECK_OBJECT(node);
+      ERROR_CHECK_STATUS(vxReleaseNode(&node));
+    }
+""" % (node.inputs[0], axes, node.attr.get('keepdims'), node.outputs[0]))
+                else:
+                    if axes_len == 1:
+                        f.write( \
+"""
+    { 
+      int axes_list[1] = {%d};
+    }
+""" % (axes[0]))
+                    elif axes_len == 2:
+                        f.write( \
+"""
+    { 
+      int axes_list[2] = {%d, %d};
+    }
+""" % (axes[0], axes[1]))
+                    elif axes_len == 3:
+                        f.write( \
+"""
+    { 
+      int axes_list[3] = {%d, %d, %d};
+    }
+""" % (axes[0], axes[1], axes[2]))
+                    elif axes_len == 4:
+                        f.write( \
+"""
+    { 
+      int axes_list[4] = {%d, %d, %d, %d};
+    }
+""" % (axes[0], axes[1], axes[2], axes[3]))
+                    f.write( \
+"""
+    { 
+      vx_array axes =  vxCreateArray(context, VX_TYPE_INT32, %d);
+      ERROR_CHECK_STATUS(vxTruncateArray(axes,0));
+      int *axes_ptr = &axes_list[0];
+      ERROR_CHECK_STATUS(vxAddArrayItems(axes, %d, axes_ptr, sizeof(int)));
+      vx_node node = vxReduceMinLayer(graph, %s, axes, %d, %s);
+      ERROR_CHECK_OBJECT(node);
+      ERROR_CHECK_STATUS(vxReleaseNode(&node));
+    }
+""" % (axes_len, axes_len, node.inputs[0], node.attr.get('keepdims'), node.outputs[0]))
             else:
                 raise ValueError("Unsupported node by OpenVX: {}".format(node.type))
         f.write( \
@@ -1258,7 +1384,7 @@ VX_API_ENTRY int VX_API_CALL annCopyToInferenceInput(pyif_ann_handle handle, flo
             printf("ERROR: annCopyToInferenceInput: vxCopyTensorPatch: failed (%%d)\\n", status);
         }
     }
-    else if((status = vxMapTensorPatch(handle->input, 4, nullptr, nullptr, &map_id, stride, (void **)&ptr, VX_WRITE_ONLY, VX_MEMORY_TYPE_HOST, 0)) != VX_SUCCESS) {
+    else if((status = vxMapTensorPatch(handle->input, 4, nullptr, nullptr, &map_id, stride, (void **)&ptr, VX_WRITE_ONLY, VX_MEMORY_TYPE_HOST)) != VX_SUCCESS) {
         printf("ERROR: annCopyToInferenceInput: vxMapTensorPatch: failed (%%d)\\n", status);
     }
     else {
@@ -1307,7 +1433,7 @@ VX_API_ENTRY int VX_API_CALL annCopyToInferenceInput(pyif_ann_handle handle, flo
             printf("ERROR: annCopyToInferenceInput: vxCopyTensorPatch: failed (%%d)\\n", status);
         }
     }
-    else if((status = vxMapTensorPatch(handle->input, 4, nullptr, nullptr, &map_id, stride, (void **)&ptr, VX_WRITE_ONLY, VX_MEMORY_TYPE_HOST, 0)) != VX_SUCCESS) {
+    else if((status = vxMapTensorPatch(handle->input, 4, nullptr, nullptr, &map_id, stride, (void **)&ptr, VX_WRITE_ONLY, VX_MEMORY_TYPE_HOST)) != VX_SUCCESS) {
         printf("ERROR: annCopyToInferenceInput: vxMapTensorPatch: failed (%%d)\\n", status);
     }
     else {
@@ -1378,7 +1504,7 @@ VX_API_ENTRY int VX_API_CALL annCopyFromInferenceOutput(pyif_ann_handle handle, 
     }
     else if(handle->output[0])
     {
-        if((status = vxMapTensorPatch(handle->output[0], %d, nullptr, nullptr, &map_id, stride, (void **)&ptr, VX_READ_ONLY, VX_MEMORY_TYPE_HOST, 0)) != VX_SUCCESS) {
+        if((status = vxMapTensorPatch(handle->output[0], %d, nullptr, nullptr, &map_id, stride, (void **)&ptr, VX_READ_ONLY, VX_MEMORY_TYPE_HOST)) != VX_SUCCESS) {
             printf("ERROR: annCopyFromInferenceOutput: vxMapTensorPatch: failed (%%d)\\n", status);
         }
         for(int i = 0; i < writeSize; i++) {
@@ -1433,7 +1559,7 @@ VX_API_ENTRY int VX_API_CALL annCopyFromInferenceOutput_%d(pyif_ann_handle handl
     }
     else if(handle->output)
     {
-        if((status = vxMapTensorPatch(handle->output[1], %d, nullptr, nullptr, &map_id, stride, (void **)&ptr, VX_READ_ONLY, VX_MEMORY_TYPE_HOST, 0)) != VX_SUCCESS)
+        if((status = vxMapTensorPatch(handle->output[1], %d, nullptr, nullptr, &map_id, stride, (void **)&ptr, VX_READ_ONLY, VX_MEMORY_TYPE_HOST)) != VX_SUCCESS)
         {
             printf("ERROR: annCopyFromInferenceOutput: vxMapTensorPatch: failed (%%d)\\n", status);
         }
@@ -1490,7 +1616,7 @@ VX_API_ENTRY int VX_API_CALL annCopyFromInferenceOutput_%d(pyif_ann_handle handl
     }
     else if(handle->output)
     {
-        if((status = vxMapTensorPatch(handle->output[2], %d, nullptr, nullptr, &map_id, stride, (void **)&ptr, VX_READ_ONLY, VX_MEMORY_TYPE_HOST, 0)) != VX_SUCCESS)
+        if((status = vxMapTensorPatch(handle->output[2], %d, nullptr, nullptr, &map_id, stride, (void **)&ptr, VX_READ_ONLY, VX_MEMORY_TYPE_HOST)) != VX_SUCCESS)
         {
             printf("ERROR: annCopyFromInferenceOutput: vxMapTensorPatch: failed (%%d)\\n", status);
         }
@@ -1506,7 +1632,7 @@ VX_API_ENTRY int VX_API_CALL annCopyFromInferenceOutput_%d(pyif_ann_handle handl
 }
 """   % (2, tshape[2][3]*2, tshape[2][2]*tshape[2][3]*2, tshape[2][1]*tshape[2][2]*tshape[2][3]*2, tshape[i][1],tshape[i][2],tshape[i][3],output_buf_size[2], output_buf_size[2], len(output_shape[2])))
             if virtual_tensor_flag == 0:
-            	f.write( \
+                f.write( \
 """
 VX_API_ENTRY int VX_API_CALL annCopyFromInferenceLocal(pyif_ann_handle handle, const char *tensorName, float * out_ptr, size_t out_size)
 {
@@ -1519,22 +1645,22 @@ VX_API_ENTRY int VX_API_CALL annCopyFromInferenceLocal(pyif_ann_handle handle, c
         printf("ERROR: annCopyFromInferenceLocal: vxQueryTensor: failed (%d)\\n", status);
     }
 """)
-            	if input_data_type == "F032":
-                	f.write( \
+                if input_data_type == "F032":
+                    f.write( \
 """    vx_size stride[4] = { 4, dims[0]*4, dims[0]*dims[1]*4, dims[0]*dims[1]*dims[2]*4 };
 """)
-            	elif input_data_type == "F016":
-                	f.write( \
+                elif input_data_type == "F016":
+                    f.write( \
 """    vx_size stride[4] = { 2, dims[0]*2, dims[0]*dims[1]*2, dims[0]*dims[1]*dims[2]*2 };
 """)
-            	f.write( \
+                f.write( \
 """    if(!handle) {
         status = VX_FAILURE;
         printf("ERROR: annCopyFromInferenceLocal: invalid handle\\n");
     }
 """ )
-            	if input_data_type == "F032":
-                	f.write(\
+                if input_data_type == "F032":
+                    f.write(\
 """    else if(out_size/%d != stride[3]) {
         status = VX_FAILURE;
         printf("ERROR: annCopyFromInferenceLocal: invalid output buffer size (must be %%d) -- got %%d\\n", (int)stride[3],(int)out_size);
@@ -1547,7 +1673,7 @@ VX_API_ENTRY int VX_API_CALL annCopyFromInferenceLocal(pyif_ann_handle handle, c
         printf("ERROR: annCopyFromInferenceLocal: invalid output buffer size (must be %%d) -- got %%d\\n", (int)stride[3],(int)out_size);
     }
 """ % (input_shape[0]))
-            	f.write (\
+                f.write (\
 """    else if((vx_tensor)it->second && (status = vxCopyTensorPatch((vx_tensor)it->second, %d, nullptr, nullptr, stride, out_ptr, VX_READ_ONLY, VX_MEMORY_TYPE_HOST)) != VX_SUCCESS) {
         printf("ERROR: annCopyFromInferenceLocal: vxCopyTensorPatch: failed (%%d)\\n", status);
     }
@@ -1800,7 +1926,7 @@ static vx_status copyTensor(std::string tensorName, vx_tensor tensor, std::strin
     vx_size count = dims[0] * dims[1] * dims[2] * dims[3];
     vx_map_id map_id;
     void * ptr;
-    vx_status status = vxMapTensorPatch(tensor, num_of_dims, nullptr, nullptr, &map_id, stride, (void **)&ptr, usage, VX_MEMORY_TYPE_HOST, 0);
+    vx_status status = vxMapTensorPatch(tensor, num_of_dims, nullptr, nullptr, &map_id, stride, (void **)&ptr, usage, VX_MEMORY_TYPE_HOST);
     if(status) {
         std::cerr << "ERROR: vxMapTensorPatch() failed for " << fileName << std::endl;
         return -1;
@@ -2534,7 +2660,7 @@ Usage: python nnir_to_openvx.py [OPTIONS] <nnirInputFolder> <outputFolder>
     inputFolder = sys.argv[pos]
     outputFolder = sys.argv[pos+1]
     print('reading IR model from ' + inputFolder + ' ...')
-    graph = IrGraph()
+    graph = IrGraph(True)
     graph.fromFile(inputFolder)
     for tensor in graph.outputs:
         if len(tensor.shape) == 1:
