@@ -214,7 +214,7 @@ class IrNode(object):
             'cast' : 1,
             'nms'  : 1,
             'constant' : 1,
-            'constantofshape' : 1,
+            'constant_of_shape' : 1,
             'gather' : 1,
             'topk'  : 1,
             'reduce_min' : 1,
@@ -672,24 +672,39 @@ class IrGraph(object):
                     local.setInfo(tensorType, shape)
                     local.setFormat(tensorType)
                     self.addLocal(local)
-                elif node.type in ['constantofshape']:
-                    input = self.tensor_dict[node.inputs[0]]
-                    constantCount+=1
-                    tensor_name = 'constant_' + str(constantCount)
+                elif node.type in ['constant_of_shape']:
+                    value = 0
                     value = node.attr.get('value')
                     value = np.atleast_1d(value)
                     valueType = value.dtype
-                    tensorType = 'F032'
-                    if valueType == 'int64':
+                    if valueType == 'float64':
+                        tensorType = 'F064'
+                    elif valueType == 'float32':
+                        tensorType = 'F032'
+                    elif valueType == 'float16':
+                        tensorType = 'F016'
+                    elif valueType == 'int64':
                         tensorType = 'I064'
-                    
-                    shape = [1]
+                    elif valueType == 'int32':
+                        tensorType = 'I032'
+                    elif valueType == 'int16':
+                        tensorType = 'I016'
+                    elif valueType == 'uint16':
+                        tensorType = 'U016'
+                    elif valueType == 'uint8':
+                        tensorType = 'U008'
+                    else:
+                        raise ValueError("constant: Tensor type not supported: " + tensorType)
+            
+                    shape = np.frombuffer(self.binaries[node.inputs[0]], dtype=np.int64)
+                    input_value = np.full(shape, value)
                     constant_tensor = IrTensor()
-                    constant_tensor.setName(tensor_name)
+                    constant_tensor.setName(output)
                     constant_tensor.setInfo(tensorType, shape)
                     self.addVariable(constant_tensor)                    
-                    self.addBinary(tensor_name, value)
-                    
+                    self.addBinary(output, input_value)
+                    node.attr.set('value', value)
+                    node.inputs[0] = output
                     node.type = 'copy'
                     local = IrTensor()
                     local.setName(output)
