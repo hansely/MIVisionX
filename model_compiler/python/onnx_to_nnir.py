@@ -104,7 +104,7 @@ onnx2ir_op_type = {
     'Slice'              : 'slice',
     'ReduceMin'          : 'reduce_min',
     'Tile'               : 'tile',
-    'ConstantOfShape'    : 'constant_of_shape'
+    'ConstantOfShape'    : 'copy'
 }
 
 onnx2ir_data_type = [

@@ -154,6 +154,7 @@ class IrAttr(object):
             name = saL[0]
             value = saL[1]
             value_type = type(self.dict_values[name]).__name__
+            print(name, value, type(value), value_type)
             if value_type == 'list':
                 list_type = value.split(',')
                 self.set(name, [int(x) for x in list_type] if (list_type[0].count('.') == 0) else [float(x) for x in list_type])
@@ -161,6 +162,27 @@ class IrAttr(object):
                 self.set(name, float(value))
             elif value_type == 'str':
                 self.set(name, str(value))
+            elif value_type == 'ndarray': 
+                value = self.get(name)
+                valueType = value.dtype
+                if valueType == 'float64':
+                    self.set(name, np.fromstring(value, dtype=np.float64))
+                elif valueType == 'float32':
+                    self.set(name, np.fromstring(value, dtype=np.float32))
+                elif valueType == 'float16':
+                    self.set(name, np.fromstring(value, dtype=np.float16))
+                elif valueType == 'int64':
+                    self.set(name, np.fromstring(value, dtype=np.int64))
+                elif valueType == 'int32':
+                    self.set(name, np.fromstring(value, dtype=np.int32))
+                elif valueType == 'int16':
+                    self.set(name, np.fromstring(value, dtype=np.int16))
+                elif valueType == 'uint16':
+                    self.set(name, np.fromstring(value, dtype=np.uint16))
+                elif valueType == 'uint8':
+                    self.set(name, np.fromstring(value, dtype=np.uint8))
+                else:
+                    raise ValueError("fromString: ndarray type not supported: " + tensorType)
             else:
                 self.set(name, int(value))
 
@@ -214,7 +236,6 @@ class IrNode(object):
             'cast' : 1,
             'nms'  : 1,
             'constant' : 1,
-            'constant_of_shape' : 1,
             'gather' : 1,
             'topk'  : 1,
             'reduce_min' : 1,
@@ -656,6 +677,7 @@ class IrGraph(object):
                         tensorType = 'U008'
                     else:
                         raise ValueError("constant: Tensor type not supported: " + tensorType)
+                    #print("after constant = ",tensorType)
                     shape = list(value.shape)
                     if len(shape) == 0:
                         shape.append(1)
@@ -664,48 +686,9 @@ class IrGraph(object):
                     constant_tensor.setInfo(tensorType, shape)
                     self.addVariable(constant_tensor)
                     self.addBinary(output, value)
-                    
+
                     node.type = 'copy'
                     node.inputs.append(output)
-                    local = IrTensor()
-                    local.setName(output)
-                    local.setInfo(tensorType, shape)
-                    local.setFormat(tensorType)
-                    self.addLocal(local)
-                elif node.type in ['constant_of_shape']:
-                    value = 0
-                    value = node.attr.get('value')
-                    value = np.atleast_1d(value)
-                    valueType = value.dtype
-                    if valueType == 'float64':
-                        tensorType = 'F064'
-                    elif valueType == 'float32':
-                        tensorType = 'F032'
-                    elif valueType == 'float16':
-                        tensorType = 'F016'
-                    elif valueType == 'int64':
-                        tensorType = 'I064'
-                    elif valueType == 'int32':
-                        tensorType = 'I032'
-                    elif valueType == 'int16':
-                        tensorType = 'I016'
-                    elif valueType == 'uint16':
-                        tensorType = 'U016'
-                    elif valueType == 'uint8':
-                        tensorType = 'U008'
-                    else:
-                        raise ValueError("constant: Tensor type not supported: " + tensorType)
-            
-                    shape = np.frombuffer(self.binaries[node.inputs[0]], dtype=np.int64)
-                    input_value = np.full(shape, value)
-                    constant_tensor = IrTensor()
-                    constant_tensor.setName(output)
-                    constant_tensor.setInfo(tensorType, shape)
-                    self.addVariable(constant_tensor)                    
-                    self.addBinary(output, input_value)
-                    node.attr.set('value', value)
-                    node.inputs[0] = output
-                    node.type = 'copy'
                     local = IrTensor()
                     local.setName(output)
                     local.setInfo(tensorType, shape)
@@ -1458,7 +1441,8 @@ class IrGraph(object):
             for tensor in self.outputs:
                 f.write('output|' + tensor.toString() + '\n')
             for tensor in self.initializers:
-                f.write('initializer|' + tensor.toString() + '\n')
+                if tensor.shape != []:
+                    f.write('initializer|' + tensor.toString() + '\n')
             for tensor in self.locals:
                 f.write('local|' + tensor.toString() + '\n')
             for node in self.nodes:
