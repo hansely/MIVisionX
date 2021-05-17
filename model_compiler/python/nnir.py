@@ -443,6 +443,8 @@ class IrGraph(object):
                         shape = [input.shape[0], 0, input.shape[2], input.shape[3]]
                         for name in node.inputs:
                             lshape = self.tensor_shapes[name]
+                            while(len(lshape) < 4):
+                                lshape.append(1)
                             if shape[0:1] + shape[2:] != lshape[0:1] + lshape[2:]:
                                 raise ValueError("concat: mismatch detected: " + node.inputs[0] + ":" + str(shape) + " " + name + ":" + str(lshape))
                             shape[1] = shape[1] + lshape[1]
