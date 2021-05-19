@@ -662,6 +662,7 @@ class IrGraph(object):
                     value = node.attr.get('value')
                     value = np.atleast_1d(value)
                     valueType = value.dtype
+                    
                     if valueType == 'float64':
                         tensorType = 'F064'
                     elif valueType == 'float32':
@@ -690,6 +691,7 @@ class IrGraph(object):
                     self.addVariable(constant_tensor)
                     self.addBinary(output, value)
 
+                    node.attr.dict_set.remove('value')
                     node.type = 'copy'
                     node.inputs.append(output)
                     local = IrTensor()
