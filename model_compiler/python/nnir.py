@@ -154,6 +154,7 @@ class IrAttr(object):
             name = saL[0]
             value = saL[1]
             value_type = type(self.dict_values[name]).__name__
+            print(name, value, type(value), value_type)
             if value_type == 'list':
                 list_type = value.split(',')
                 self.set(name, [int(x) for x in list_type] if (list_type[0].count('.') == 0) else [float(x) for x in list_type])
@@ -161,6 +162,27 @@ class IrAttr(object):
                 self.set(name, float(value))
             elif value_type == 'str':
                 self.set(name, str(value))
+            elif value_type == 'ndarray': 
+                value = self.get(name)
+                valueType = value.dtype
+                if valueType == 'float64':
+                    self.set(name, np.fromstring(value, dtype=np.float64))
+                elif valueType == 'float32':
+                    self.set(name, np.fromstring(value, dtype=np.float32))
+                elif valueType == 'float16':
+                    self.set(name, np.fromstring(value, dtype=np.float16))
+                elif valueType == 'int64':
+                    self.set(name, np.fromstring(value, dtype=np.int64))
+                elif valueType == 'int32':
+                    self.set(name, np.fromstring(value, dtype=np.int32))
+                elif valueType == 'int16':
+                    self.set(name, np.fromstring(value, dtype=np.int16))
+                elif valueType == 'uint16':
+                    self.set(name, np.fromstring(value, dtype=np.uint16))
+                elif valueType == 'uint8':
+                    self.set(name, np.fromstring(value, dtype=np.uint8))
+                else:
+                    raise ValueError("fromString: ndarray type not supported: " + tensorType)
             else:
                 self.set(name, int(value))
 
@@ -452,6 +474,8 @@ class IrGraph(object):
                         shape = [input.shape[0], 0, input.shape[2], input.shape[3]]
                         for name in node.inputs:
                             lshape = self.tensor_shapes[name]
+                            while(len(lshape) < 4):
+                                lshape.append(1)
                             if shape[0:1] + shape[2:] != lshape[0:1] + lshape[2:]:
                                 raise ValueError("concat: mismatch detected: " + node.inputs[0] + ":" + str(shape) + " " + name + ":" + str(lshape))
                             shape[1] = shape[1] + lshape[1]
@@ -656,6 +680,7 @@ class IrGraph(object):
                         tensorType = 'U008'
                     else:
                         raise ValueError("constant: Tensor type not supported: " + tensorType)
+                    #print("after constant = ",tensorType)
                     shape = list(value.shape)
                     if len(shape) == 0:
                         shape.append(1)
@@ -664,7 +689,7 @@ class IrGraph(object):
                     constant_tensor.setInfo(tensorType, shape)
                     self.addVariable(constant_tensor)
                     self.addBinary(output, value)
-                    
+
                     node.type = 'copy'
                     node.inputs.append(output)
                     local = IrTensor()
@@ -1458,7 +1483,8 @@ class IrGraph(object):
             for tensor in self.outputs:
                 f.write('output|' + tensor.toString() + '\n')
             for tensor in self.initializers:
-                f.write('initializer|' + tensor.toString() + '\n')
+                if tensor.shape != []:
+                    f.write('initializer|' + tensor.toString() + '\n')
             for tensor in self.locals:
                 f.write('local|' + tensor.toString() + '\n')
             for node in self.nodes:
