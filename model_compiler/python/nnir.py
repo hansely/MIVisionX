@@ -495,7 +495,14 @@ class IrGraph(object):
                     local.setInfo(input.type, shape)
                     local.setFormat(input.format)
                     self.addLocal(local)
-                    self.addBinary(output, bytes(shape))
+
+                    value = np.atleast_1d(shape)
+                    constant_tensor = IrTensor()
+                    constant_tensor.setName(output)
+                    constant_tensor.setInfo(input.type, shape)
+                    self.addVariable(constant_tensor)
+                    self.addBinary(output, value)
+
                 elif node.type in ['slice']:
                     input = self.tensor_dict[node.inputs[0]]
                     out_shape = []
