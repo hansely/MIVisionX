@@ -932,7 +932,7 @@ VX_API_ENTRY vx_image VX_API_CALL vxCreateImageFromHandle(vx_context context, vx
                         data->children[i]->buffer = (vx_uint8 *)(ptrs ? ptrs[i] : nullptr);
                         data->children[i]->u.img.stride_in_bytes = addrs[i].stride_y;
                         data->children[i]->gpu_buffer_offset = 0;
-#if ENABLE_OPENCL
+#if (ENABLE_OPENCL || ENABLE_HIP)
                     data->children[i]->buffer_sync_flags &= ~AGO_BUFFER_SYNC_FLAG_DIRTY_MASK;
                     data->children[i]->buffer_sync_flags |= AGO_BUFFER_SYNC_FLAG_DIRTY_BY_COMMIT;
 #endif

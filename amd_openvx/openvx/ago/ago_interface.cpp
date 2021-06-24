@@ -2292,6 +2292,24 @@ int agoExecuteGraph(AgoGraph * graph)
                 node->hip_stream0 = graph->hip_stream0;
                 agoPerfProfileEntry(graph, ago_profile_type_launch_begin, &node->ref);
                 agoPerfCaptureStart(&node->perf);
+                // make sure that all input buffers are synched
+                for (vx_uint32 i = 0; i < node->paramCount; i++) {
+                    AgoData * data = node->paramList[i];
+                    if (data &&
+                        (node->parameters[i].direction == VX_INPUT || node->parameters[i].direction == VX_BIDIRECTIONAL))
+                    {
+                        auto dataToSync = (data->ref.type == VX_TYPE_IMAGE && data->u.img.isROI) ? data->u.img.roiMasterImage : data;
+                        if (dataToSync->buffer_sync_flags & (AGO_BUFFER_SYNC_FLAG_DIRTY_BY_NODE | AGO_BUFFER_SYNC_FLAG_DIRTY_BY_COMMIT) &&
+                            dataToSync->hip_memory && !(dataToSync->buffer_sync_flags & AGO_BUFFER_SYNC_FLAG_DIRTY_SYNCHED))
+                        {
+                            status = agoDirective((vx_reference)dataToSync, VX_DIRECTIVE_AMD_COPY_TO_HIPMEM);
+                            if(status != VX_SUCCESS) {
+                                agoAddLogEntry((vx_reference)graph, VX_FAILURE, "ERROR: agoDirective(*,VX_DIRECTIVE_AMD_COPY_TO_HIPMEM) failed (%d:%s)\n", status, agoEnum2Name(status));
+                                return status;
+                            }
+                        }
+                    }
+                }
                 if (!node->supernode) {
                     // launch the single node
                     if (agoGpuHipSingleNodeLaunch(graph, node) < 0) {
@@ -2665,6 +2683,16 @@ vx_status agoDirective(vx_reference reference, vx_enum directive)
                                     status = VX_SUCCESS;
                                 }
                             }
+                        }
+                    } else if (dataToSync->ref.type == VX_TYPE_CONVOLUTION) {
+                        if (dataToSync->hip_memory && data->size >0) {
+                            hipError_t err = hipMemcpyHtoD(dataToSync->hip_memory + dataToSync->gpu_buffer_offset, dataToSync->reserved, data->size << 1);
+                            if (err) {
+                                agoAddLogEntry(NULL, VX_FAILURE, "ERROR: hipMemcpyHtoD failed => %d\n", err);
+                                return VX_FAILURE;
+                            }
+                            dataToSync->buffer_sync_flags |= AGO_BUFFER_SYNC_FLAG_DIRTY_SYNCHED;
+                            status = VX_SUCCESS;
                         }
                     } else {
                         if (dataToSync->hip_memory) {
