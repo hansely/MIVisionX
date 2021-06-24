@@ -2568,12 +2568,21 @@ vx_status agoDirective(vx_reference reference, vx_enum directive)
                     auto dataToSync = (data->ref.type == VX_TYPE_IMAGE && data->u.img.isROI) ? data->u.img.roiMasterImage : data;
                     if (dataToSync->ref.type == VX_TYPE_LUT) {
                         if (dataToSync->opencl_buffer) {
-                            size_t origin[3] = { 0, 0, 0 };
-                            size_t region[3] = { 256, 1, 1 };
-                            cl_int err = clEnqueueWriteImage(dataToSync->ref.context->opencl_cmdq, dataToSync->opencl_buffer, CL_TRUE, origin, region, 256, 0, dataToSync->buffer, 0, NULL, NULL);
-                            if (err) {
-                                agoAddLogEntry(NULL, VX_FAILURE, "ERROR: clEnqueueWriteImage(lut) => %d\n", err);
-                                return VX_FAILURE;
+                            if (dataToSync->u.lut.type == VX_TYPE_UINT8) {
+                                size_t origin[3] = { 0, 0, 0 };
+                                size_t region[3] = { 256, 1, 1 };
+                                cl_int err = clEnqueueWriteImage(dataToSync->ref.context->opencl_cmdq, dataToSync->opencl_buffer, CL_TRUE, origin, region, 256, 0, dataToSync->buffer, 0, NULL, NULL);
+                                if (err) {
+                                    agoAddLogEntry(NULL, VX_FAILURE, "ERROR: clEnqueueWriteImage(lut) => %d\n", err);
+                                    return VX_FAILURE;
+                                }
+                            }
+                            else if (dataToSync->u.lut.type == VX_TYPE_INT16) {
+                                cl_int err = clEnqueueWriteBuffer(dataToSync->ref.context->opencl_cmdq, dataToSync->opencl_buffer, CL_TRUE, dataToSync->gpu_buffer_offset, dataToSync->size, dataToSync->buffer, 0, NULL, NULL);
+                                if (err) {
+                                    agoAddLogEntry(NULL, VX_FAILURE, "ERROR: clEnqueueWriteImage(lut) => %d\n", err);
+                                    return VX_FAILURE;
+                                }
                             }
                             dataToSync->buffer_sync_flags |= AGO_BUFFER_SYNC_FLAG_DIRTY_SYNCHED;
                             status = VX_SUCCESS;
