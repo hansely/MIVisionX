@@ -2241,6 +2241,24 @@ int agoExecuteGraph(AgoGraph * graph)
                 bool launched = true;
                 agoPerfProfileEntry(graph, ago_profile_type_launch_begin, &node->ref);
                 agoPerfCaptureStart(&node->perf);
+                // make sure that all input buffers are synched
+                for (vx_uint32 i = 0; i < node->paramCount; i++) {
+                    AgoData * data = node->paramList[i];
+                    if (data &&
+                        (node->parameters[i].direction == VX_INPUT || node->parameters[i].direction == VX_BIDIRECTIONAL))
+                    {
+                        auto dataToSync = (data->ref.type == VX_TYPE_IMAGE && data->u.img.isROI) ? data->u.img.roiMasterImage : data;
+                        if ((AGO_BUFFER_SYNC_FLAG_DIRTY_BY_NODE | AGO_BUFFER_SYNC_FLAG_DIRTY_BY_COMMIT) &&
+                            dataToSync->opencl_buffer && !(dataToSync->buffer_sync_flags & AGO_BUFFER_SYNC_FLAG_DIRTY_SYNCHED))
+                        {
+                            status = agoDirective((vx_reference)dataToSync, VX_DIRECTIVE_AMD_COPY_TO_OPENCL);
+                            if(status != VX_SUCCESS) {
+                                agoAddLogEntry((vx_reference)graph, VX_FAILURE, "ERROR: agoDirective(*,VX_DIRECTIVE_AMD_COPY_TO_OPENCL) failed (%d:%s)\n", status, agoEnum2Name(status));
+                                return status;
+                            }
+                        }
+                    }
+                }
                 if (!node->supernode) {
                     // launch the single node
                     if (agoGpuOclSingleNodeLaunch(graph, node) < 0) {
