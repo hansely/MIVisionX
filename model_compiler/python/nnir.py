@@ -581,6 +581,9 @@ class IrGraph(object):
                     local = IrTensor()
                     local.setName(output)
                     local.setInfo(input.type, out_shape)
+                    # print("----------------------------")
+                    # print(input.shape)
+                    # print(out_shape)
                     local.setFormat(input.format)
                     self.addLocal(local)
                 elif node.type in ['div']:
@@ -942,6 +945,8 @@ class IrGraph(object):
                 elif node.type in ['gather']:
                     input = self.tensor_dict[node.inputs[0]]
                     indices = self.tensor_dict[node.inputs[1]]
+                    # print("--------------------------------------------")
+                    # print(input.shape)
                     axis = node.attr.get('axis')
                     
                     Ni, Nk = input.shape[:axis], input.shape[axis+1:]

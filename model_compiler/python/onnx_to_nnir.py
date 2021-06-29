@@ -207,6 +207,7 @@ def onnx_graph_to_ir_graph(onnx_graph):
             graph.addInput(onnx_value_info_to_data(tensor, input_dims))
     for tensor in onnx_graph.output:
         output_dims = [int(x.dim_value) for x in tensor.type.tensor_type.shape.dim]
+        print(output_dims)
         if (x == 0 or x is None or x == '?' for x in output_dims):
             if inputUser == True:
                 output_dims[0] = input_dims[0]
