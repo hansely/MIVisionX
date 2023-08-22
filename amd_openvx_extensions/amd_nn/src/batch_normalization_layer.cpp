@@ -105,6 +105,7 @@ static vx_status VX_CALLBACK validateBatchNormalizationLayer(vx_node node, const
 static vx_status VX_CALLBACK processBatchNormalizationLayer(vx_node node, const vx_reference * parameters, vx_uint32 num)
 {
 PROFILER_START(VX_NN, Batch_Normalization_Layer)
+    const auto start = std::chrono::steady_clock::now();
     BatchNormLayerLocalData * data = NULL;
     ERROR_CHECK_STATUS(vxQueryNode(node, VX_NODE_LOCAL_DATA_PTR, &data, sizeof(data)));
     miopenHandle_t miopenHandle = data->handle->miopen_handle;
@@ -126,7 +127,9 @@ PROFILER_START(VX_NN, Batch_Normalization_Layer)
         //dump the output layer
         nn_layer_test_dumpBuffer("bn_%04d.bin", (vx_tensor)parameters[6]);
     #endif  
-
+    const auto finish = std::chrono::steady_clock::now();
+    const std::chrono::duration<double> duration = finish - start;
+    std::cout << "barchnorm time in miliseconds: " << duration.count() * 1000 << std::endl;
 PROFILER_STOP(VX_NN, Batch_Normalization_Layer)
     return VX_SUCCESS;
 }

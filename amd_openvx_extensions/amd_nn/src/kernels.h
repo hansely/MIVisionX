@@ -39,6 +39,7 @@ THE SOFTWARE.
 #include <VX/vx_compatibility.h>
 #include <vx_ext_amd.h>
 #include <miopen/miopen.h>
+#include <chrono>
 #include <iostream>
 #include <string.h>
 #include <vector>

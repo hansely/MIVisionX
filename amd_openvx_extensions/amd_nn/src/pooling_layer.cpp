@@ -107,6 +107,7 @@ static vx_status VX_CALLBACK validatePoolingLayer(vx_node node, const vx_referen
 static vx_status VX_CALLBACK processPoolingLayer(vx_node node, const vx_reference * parameters, vx_uint32 num)
 {
 PROFILER_START(VX_NN, Pooling_Layer)
+    const auto start = std::chrono::steady_clock::now();
     PoolingLayerLocalData * data = NULL;
     ERROR_CHECK_STATUS(vxQueryNode(node, VX_NODE_LOCAL_DATA_PTR, &data, sizeof(data)));
     miopenHandle_t miopenHandle = data->handle->miopen_handle;
@@ -135,7 +136,10 @@ PROFILER_START(VX_NN, Pooling_Layer)
     #endif
 
 PROFILER_STOP(VX_NN, Pooling_Layer)
-
+    const auto finish = std::chrono::steady_clock::now();
+    const std::chrono::duration<double> duration = finish - start;
+    std::cout << "pooling time in miliseconds: " << duration.count() * 1000 << std::endl;
+    
     return VX_SUCCESS;
 }
 

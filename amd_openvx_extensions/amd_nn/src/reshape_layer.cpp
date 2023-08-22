@@ -69,6 +69,7 @@ static vx_status VX_CALLBACK validateReshapeLayer(vx_node node, const vx_referen
 static vx_status VX_CALLBACK processReshapeLayer(vx_node node, const vx_reference * parameters, vx_uint32 num)
 {
 PROFILER_START(VX_NN, Reshape_Layer)
+    const auto start = std::chrono::steady_clock::now();
     ReshapeLayerLocalData * data= NULL;
     ERROR_CHECK_STATUS(vxQueryNode(node, VX_NODE_LOCAL_DATA_PTR, &data, sizeof(data)));
 
@@ -97,6 +98,9 @@ PROFILER_START(VX_NN, Reshape_Layer)
         std::cout << "Reshape Layer: using aliased buffer "<< std::endl;
 #endif
     }
+    const auto finish = std::chrono::steady_clock::now();
+    const std::chrono::duration<double> duration = finish - start;
+    std::cout << "reshape time in miliseconds: " << duration.count() * 1000 << std::endl;
 PROFILER_STOP(VX_NN, Reshape_Layer)
     return VX_SUCCESS;
 }

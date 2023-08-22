@@ -496,6 +496,7 @@ static vx_status VX_CALLBACK initialize(vx_node node, const vx_reference *parame
 static vx_status VX_CALLBACK process(vx_node node, const vx_reference * parameters, vx_uint32 num)
 {
     PROFILER_START(VX_NN, Tensor_Matrix_Multiply_Layer)
+    const auto start = std::chrono::steady_clock::now();
     // get parameters and buffers
     LocalData * data = nullptr;
     ERROR_CHECK_STATUS(vxQueryNode(node, VX_NODE_LOCAL_DATA_PTR, &data, sizeof(data)));
@@ -602,7 +603,9 @@ static vx_status VX_CALLBACK process(vx_node node, const vx_reference * paramete
     }
 
 #endif
-
+    const auto finish = std::chrono::steady_clock::now();
+    const std::chrono::duration<double> duration = finish - start;
+    std::cout << "matmul time in miliseconds: " << duration.count() * 1000 << std::endl;
     PROFILER_STOP(VX_NN, Tensor_Matrix_Multiply_Layer)
     return VX_SUCCESS;
 }
