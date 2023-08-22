@@ -22236,7 +22236,8 @@ int agoKernel_MinMaxLocMerge_DATA_DATA(AgoNode * node, AgoKernelCommand cmd)
     }
     return status;
 }
-
+#include <iostream>
+#include <chrono>
 int agoKernel_Copy_DATA_DATA(AgoNode * node, AgoKernelCommand cmd)
 {
     vx_status status = AGO_ERROR_KERNEL_NOT_IMPLEMENTED;
@@ -22245,6 +22246,7 @@ int agoKernel_Copy_DATA_DATA(AgoNode * node, AgoKernelCommand cmd)
         status = VX_ERROR_NOT_SUPPORTED;
     }
     else if (cmd == ago_kernel_cmd_validate) {
+        const auto start = std::chrono::steady_clock::now();
         // validate parameters
         if (node->paramList[0]->ref.type != node->paramList[1]->ref.type)
             return VX_ERROR_INVALID_PARAMETERS;
@@ -22263,6 +22265,9 @@ int agoKernel_Copy_DATA_DATA(AgoNode * node, AgoKernelCommand cmd)
         meta->data.ref.type = node->paramList[1]->ref.type;
         memcpy(&meta->data.u, &node->paramList[1]->u, sizeof(meta->data.u));
         status = VX_SUCCESS;
+        const auto finish = std::chrono::steady_clock::now();
+        const std::chrono::duration<double> duration = finish - start;
+        std::cout << "copy time in miliseconds: " << duration.count() * 1000 << std::endl;
     }
     else if (cmd == ago_kernel_cmd_initialize || cmd == ago_kernel_cmd_shutdown) {
         status = VX_SUCCESS;

@@ -21,7 +21,7 @@ THE SOFTWARE.
 */
 
 #include "kernels.h"
-
+#include <chrono>
 enum {
     NONE,                       //No bias and no activation present.
     BIAS_ONLY_SEPERATE,         // only bias is present and can't fuse.
@@ -133,6 +133,7 @@ static vx_status VX_CALLBACK validateConvolutionLayer(vx_node node, const vx_ref
 static vx_status VX_CALLBACK processConvolutionLayer(vx_node node, const vx_reference * parameters, vx_uint32 num)
 {
 PROFILER_START(VX_NN, Convolution_Layer)
+    // const auto start = std::chrono::steady_clock::now();
     ConvolutionLayerLocalData * data= NULL;
     ERROR_CHECK_STATUS(vxQueryNode(node, VX_NODE_LOCAL_DATA_PTR, &data, sizeof(data)));
 #if ENABLE_OPENCL
@@ -182,6 +183,9 @@ PROFILER_START(VX_NN, Convolution_Layer)
         //dump the output layer
         nn_layer_test_dumpBuffer("conv_%04d.bin", (vx_tensor)parameters[4]);
     #endif  
+    // const auto finish = std::chrono::steady_clock::now();
+    // const std::chrono::duration<double> duration = finish - start;
+    // std::cout << "time in seconds: " << duration.count() * 1000 << std::endl;
 PROFILER_STOP(VX_NN, Convolution_Layer)
     return VX_SUCCESS;
 }

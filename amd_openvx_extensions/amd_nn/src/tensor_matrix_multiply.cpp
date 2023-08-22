@@ -495,6 +495,7 @@ static vx_status VX_CALLBACK initialize(vx_node node, const vx_reference *parame
 
 static vx_status VX_CALLBACK process(vx_node node, const vx_reference * parameters, vx_uint32 num)
 {
+    PROFILER_START(VX_NN, Tensor_Matrix_Multiply_Layer)
     // get parameters and buffers
     LocalData * data = nullptr;
     ERROR_CHECK_STATUS(vxQueryNode(node, VX_NODE_LOCAL_DATA_PTR, &data, sizeof(data)));
@@ -602,6 +603,7 @@ static vx_status VX_CALLBACK process(vx_node node, const vx_reference * paramete
 
 #endif
 
+    PROFILER_STOP(VX_NN, Tensor_Matrix_Multiply_Layer)
     return VX_SUCCESS;
 }
 

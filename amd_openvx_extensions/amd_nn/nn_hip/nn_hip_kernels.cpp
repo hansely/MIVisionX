@@ -521,10 +521,12 @@ copy_v1(const T* inp, T* out, uint width, uint height, uint BLKW, uint ldi, uint
         out[oloc] = lbuf[hip_mad24(lx, BLKW + 1, ly)];
     }
 }
-
+#include <chrono>
+#include <iostream>
 template <typename T>
 __global__ void __attribute__((visibility("default")))
 copy_v2(const T* inp, T* out, uint width, uint height, uint ldi, uint i_offset, uint ldc, uint c_offset) {
+    printf("copyv2\n");
     uint x = hipBlockDim_x * hipBlockIdx_x + hipThreadIdx_x;
     uint y = hipBlockDim_y * hipBlockIdx_y + hipThreadIdx_y;
     if(x < width && y < height) {
@@ -536,6 +538,7 @@ copy_v2(const T* inp, T* out, uint width, uint height, uint ldi, uint i_offset, 
 
 int HipExec_copy(hipStream_t stream, vx_enum type, uchar* inp, uchar* out, uint width, uint height, uint ldi, uint i_offset,
     uint ldc, uint c_offset, bool tI) {
+    const auto start = std::chrono::steady_clock::now();
     if(tI) {
         dim3 blockDim(16, 16, 1);
         dim3 gridDim = dim3(ceil((float)width / blockDim.x), ceil((float)height / blockDim.y), 1);
@@ -555,6 +558,9 @@ int HipExec_copy(hipStream_t stream, vx_enum type, uchar* inp, uchar* out, uint 
             hipLaunchKernelGGL(copy_v2<float>, gridDim, blockDim, 0, stream, (float*)inp, (float*)out, width, height, ldi, i_offset, ldc, c_offset);
         }
     }
+    const auto finish = std::chrono::steady_clock::now();
+    const std::chrono::duration<double> duration = finish - start;
+    std::cout << "time in seconds: " << duration.count() << std::endl;
     return VX_SUCCESS;
 }
 
@@ -1859,7 +1865,7 @@ Hip_Argmax_topk2_m4_u16_i64_layer(uchar * i0_buf, uint i0_offset, uint4 i0_strid
 
 int HipExec_Argmax_layer(hipStream_t stream, dim3 globalThreads, dim3 localThreads, uchar *i0_buf, uint i0_offset, uint4 i0_stride, uint4 i0_dims, uchar *o0_buf,
     uint o0_offset, uint4 o0_stride, uint o0_image_stride, vx_enum output_data_type, uint top_k, vx_enum output_obj_type) {
-
+    const auto start = std::chrono::steady_clock::now();
     bool input_width_multiple_of_4 = (i0_dims.x & 3) ? false : true;
     dim3 gridDim = dim3(ceil((float)globalThreads.x/localThreads.x), ceil((float)globalThreads.y/localThreads.y), ceil((float)globalThreads.z/localThreads.z));
 
@@ -1980,7 +1986,9 @@ int HipExec_Argmax_layer(hipStream_t stream, dim3 globalThreads, dim3 localThrea
     } else {
         return VX_ERROR_NOT_SUPPORTED;
     }
-
+    const auto finish = std::chrono::steady_clock::now();
+    const std::chrono::duration<double> duration = finish - start;
+    std::cout << "argmax time in miliseconds: " << duration.count() * 1000 << std::endl;
     return VX_SUCCESS;
 
     }

@@ -23,6 +23,7 @@ THE SOFTWARE.
 #define _CRT_SECURE_NO_WARNINGS
 #define _CRT_SECURE_NO_DEPRECATE
 #include "profiler.h"
+#include <unordered_map>
 #include <iostream>
 #if PROFILER_MODE
 
@@ -53,7 +54,8 @@ static int profiler_count = 0;
 static int * profiler_data = 0;
 static __int64 * profiler_clock = 0;
 static inline __int64 my_rdtsc() { return __rdtsc(); }
-bool getEnvironmentVariable(const char * name, char * value, size_t valueSize)
+
+bool getEnvironmentVariableT(const char* name, char * value, size_t valueSize)
 {
 #if _WIN32
 	DWORD len = GetEnvironmentVariableA(name, value, (DWORD)valueSize);
@@ -128,15 +130,17 @@ extern "C" void dump_profile_log()
 	struct stat st = { 0 };
 	if (stat("AMD_OpenVX_NN-Visual-Profile", &st) == -1) { mkdir("AMD_OpenVX_NN-Visual-Profile", 0700); }
 #endif
-	char profiler[1024] = "AMD_OpenVX_NN-Visual-Profile/VX_NN_PROFILE";
+	char profiler[1024] = "AMD_OpenVX_NN-Visual-Profile";
 	char textBuffer[1024];
-	if (getEnvironmentVariable("VISUAL_PROFILER_LOCATION", textBuffer, sizeof(textBuffer))) { sprintf(profiler, "%s/VX_NN_PROFILE", textBuffer); }
+	if (getEnvironmentVariableT("VISUAL_PROFILER_LOCATION", textBuffer, sizeof(textBuffer))) { 
+		sprintf(profiler, "%s/VX_NN_PROFILE", textBuffer); 
+	}
     char plogfile[1024]; sprintf(plogfile, "%s-data.log", profiler);
     char phtmfile[1024]; sprintf(phtmfile, "%s-visual.html", profiler);
-	FILE * fp = fopen(plogfile, "w"); if (!fp) { printf("ERROR: unable to create '%s'\n", plogfile); return; }
-	FILE * fh = fopen(phtmfile, "w"); if (!fh) { printf("ERROR: unable to create '%s'\n", phtmfile); return; }
+	// FILE * fp = fopen(plogfile, "w"); if (!fp) { printf("ERROR: unable to create '%s'\n", plogfile); return; }
+	// FILE * fh = fopen(phtmfile, "w"); if (!fh) { printf("ERROR: unable to create '%s'\n", phtmfile); return; }
 
-	fprintf(fh, header, phtmfile);
+	// fprintf(fh, header, phtmfile);
 	int width = 1000;
 	int height = 400;
 	int nidlist = 0;
@@ -184,13 +188,16 @@ extern "C" void dump_profile_log()
 		}
 	}
     int max_time = 10 + (int)((float)(profiler_clock[profiler_count - 1] - profiler_clock[0])*1000000.0f / freq);
-    for (int k = 0; k <= max_time; k += 100) {
-        int barx = xstart + (int)(k);
-		fprintf(fh, "    d = document.createElement('div'); d.title = '%d us'; d.className='time0'; d.style.backgroundColor='#FFFFFF'; d.style.top='%dpx'; d.style.left='%dpx'; d.style.width='%dpx'; document.getElementsByTagName('body')[0].appendChild(d);\n",
-			k, 40, barx - 1, 1);
-		fprintf(fh, "    d = document.createElement('div'); e = document.createTextNode('%3dus'); d.appendChild(e); d.className='time1'; d.style.backgroundColor='#FFFFFF'; d.style.top='%dpx'; d.style.left='%dpx'; document.getElementsByTagName('body')[0].appendChild(d);\n",
-			k, 50, barx + 2);
-	}
+    // for (int k = 0; k <= max_time; k += 100) {
+    //     int barx = xstart + (int)(k);
+	// 	fprintf(fh, "    d = document.createElement('div'); d.title = '%d us'; d.className='time0'; d.style.backgroundColor='#FFFFFF'; d.style.top='%dpx'; d.style.left='%dpx'; d.style.width='%dpx'; document.getElementsByTagName('body')[0].appendChild(d);\n",
+	// 		k, 40, barx - 1, 1);
+	// 	fprintf(fh, "    d = document.createElement('div'); e = document.createTextNode('%3dus'); d.appendChild(e); d.className='time1'; d.style.backgroundColor='#FFFFFF'; d.style.top='%dpx'; d.style.left='%dpx'; document.getElementsByTagName('body')[0].appendChild(d);\n",
+	// 		k, 50, barx + 2);
+	// }
+
+	std::unordered_map<const char *, std::pair<int, float>> map;
+	float tempClock = 0, duration = 0;
 	for (int k = 0; k < profiler_count; k++) {
 		float fclock = (float)(profiler_clock[k] - profiler_clock[0])*1000000.0f / freq;
 		int e = profiler_data[k] >> 2;
@@ -200,7 +207,8 @@ extern "C" void dump_profile_log()
 			for (int j = k + 1; j < profiler_count; j++) {
 				if ((profiler_data[k] ^ profiler_data[j]) == 2) {
 					union { __int64 a; int b[2]; } u; u.a = profiler_clock[j];
-					sprintf(data, " DATA[%d,%d]", u.b[0], u.b[1]);
+					// sprintf(data, " DATA[%d,%d]", u.b[0], u.b[1]);
+					printf(" DATA[%d,%d]", u.b[0], u.b[1]);
 				}
 				if ((profiler_data[k] ^ profiler_data[j]) == 1) {
                     float fclockj = (float)(profiler_clock[j] - profiler_clock[0])*1000000.0f / freq;
@@ -208,12 +216,12 @@ extern "C" void dump_profile_log()
                     int barx = xstart + (int)(start);
                     int barw = (int)(duration);
 					const char * color = colorlist[id%ncolors];
-					if ((idlist[id][0] + 6) < barx) {
-						fprintf(fh, "    d = document.createElement('div'); d.title = '%s'; d.className='time1'; d.style.top='%dpx'; d.style.left='%dpx'; d.style.width='%dpx'; document.getElementsByTagName('body')[0].appendChild(d);\n",
-							name, idlist[id][1], idlist[id][0] + 3, barx - idlist[id][0] - 6);
-					}
-					fprintf(fh, "    d = document.createElement('div'); d.title = '%s %5.3fus @%5.3fus%s'; d.className='time0'; d.style.backgroundColor='%s'; d.style.top='%dpx'; d.style.left='%dpx'; d.style.width='%dpx'; document.getElementsByTagName('body')[0].appendChild(d);\n",
-						name, duration, start, data, color, idlist[id][1], barx, barw);
+					// if ((idlist[id][0] + 6) < barx) {
+					// 	fprintf(fh, "    d = document.createElement('div'); d.title = '%s'; d.className='time1'; d.style.top='%dpx'; d.style.left='%dpx'; d.style.width='%dpx'; document.getElementsByTagName('body')[0].appendChild(d);\n",
+					// 		name, idlist[id][1], idlist[id][0] + 3, barx - idlist[id][0] - 6);
+					// }
+					// fprintf(fh, "    d = document.createElement('div'); d.title = '%s %5.3fus @%5.3fus%s'; d.className='time0'; d.style.backgroundColor='%s'; d.style.top='%dpx'; d.style.left='%dpx'; d.style.width='%dpx'; document.getElementsByTagName('body')[0].appendChild(d);\n",
+					// 	name, duration, start, data, color, idlist[id][1], barx, barw);
 					if (idlist[id][0] < (barx + barw)) {
 						idlist[id][0] = (barx + barw);
 					}
@@ -230,24 +238,37 @@ extern "C" void dump_profile_log()
 			}
 		}
 		if (t == 2) {
-			fprintf(fp, "DATA %20lld %3d %s\n", (long long int)profiler_clock[k], e, ProfilerEventName[e]);
+			// fprintf(fp, "DATA %20lld %3d %s\n", (long long int)profiler_clock[k], e, ProfilerEventName[e]);
+			printf("DATA %20lld %3d %s\n", (long long int)profiler_clock[k], e, ProfilerEventName[e]);
 		}
 		else {
-			fprintf(fp, "%12.3f %-12s %3d %s\n", fclock, t ? "stop" : "start", e, ProfilerEventName[e]);
+			if(t) { // stop
+				duration = fclock - tempClock;
+				// printf("%12.3f %-12s %3d %s\n", duration, t ? "stop" : "start", e, ProfilerEventName[e]);
+				map[ProfilerEventName[e]].first++;
+				map[ProfilerEventName[e]].second += duration;
+			}
+			else { // start
+				tempClock = fclock; 
+			}
+			// printf("%12.3f %-12s %3d %s\n", fclock, t ? "stop" : "start", e, ProfilerEventName[e]);
 		}
+	}
+	for (auto itr = map.begin(); itr != map.end(); itr++) {
+		std::cout << itr->first << " " << itr->second.first << " " << itr->second.second / itr->second.first << std::endl;
 	}
 	for (int e = 0; e < PROFILER_NUM_EVENTS; e++) {
 		if (idlist[e][0] >= 0) {
-			fprintf(fh, "    d = document.createElement('div'); e = document.createTextNode('%s'); d.appendChild(e); d.className='name0'; d.style.top='%dpx'; document.getElementsByTagName('body')[0].appendChild(d);\n",
-				ProfilerEventName[e], idlist[e][1] + 3);
-			fprintf(fh, "    d = document.createElement('div'); e = document.createTextNode('%5.1f(min) %5.1f(avg) %5.1f(max) %3d(count)'); d.appendChild(e); d.className='name1'; d.style.top='%dpx'; document.getElementsByTagName('body')[0].appendChild(d);\n",
-				tmin[e], tsum[e] / tcount[e], tmax[e], tcount[e], idlist[e][1] + 3 + 18);
+			// fprintf(fh, "    d = document.createElement('div'); e = document.createTextNode('%s'); d.appendChild(e); d.className='name0'; d.style.top='%dpx'; document.getElementsByTagName('body')[0].appendChild(d);\n",
+			// 	ProfilerEventName[e], idlist[e][1] + 3);
+			// fprintf(fh, "    d = document.createElement('div'); e = document.createTextNode('%5.1f(min) %5.1f(avg) %5.1f(max) %3d(count)'); d.appendChild(e); d.className='name1'; d.style.top='%dpx'; document.getElementsByTagName('body')[0].appendChild(d);\n",
+			// 	tmin[e], tsum[e] / tcount[e], tmax[e], tcount[e], idlist[e][1] + 3 + 18);
 		}
 	}
-	fclose(fp);
+	// fclose(fp);
 	height = 60 + nidlist * 50 + 100;
-	fprintf(fh, footer, xstart - 30, width - xstart + 50, height);
-	fclose(fh);
+	// fprintf(fh, footer, xstart - 30, width - xstart + 50, height);
+	// fclose(fh);
 	printf("AMD_OpenVX_NN Visual Profile:Dumped profiler log from %d events into %s and %s\n", profiler_count, plogfile, phtmfile);
 }
 
