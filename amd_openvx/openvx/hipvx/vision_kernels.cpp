@@ -42,7 +42,15 @@ Hip_CannySobel_U16_U8_3x3_L1NORM(uint dstWidth, uint dstHeight,
     { // load 136x18 bytes into local memory using 16x16 workgroup
         int loffset = ly * 136 + (lx << 3);
         int goffset = (y - 1) * srcImageStrideInBytes + x - 4;
-        *((uint2 *)(&lbuf[loffset])) = *((uint2 *)(&pSrcImage[goffset]));
+        if ((uintptr_t)(&pSrcImage[goffset]) % sizeof(uint2) != 0) {
+            printf("Misaligned access at goffset: %d\n", goffset);
+        }
+
+        if (goffset >= 0 && goffset + sizeof(uint2) <= srcImageStrideInBytes * dstHeight) {
+            *((uint2 *)(&lbuf[loffset])) = *((uint2 *)(&pSrcImage[goffset]));
+        } else {
+            printf("Out-of-bounds access: goffset = %d\n", goffset);
+        }
         bool doExtraLoad = false;
         if (ly < 2) {
             loffset += 16 * 136;
